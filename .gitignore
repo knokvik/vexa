@@ -1,0 +1,38 @@
+# dependencies
+node_modules
+.pnpm-store
+
+# build
+dist
+.next
+out
+build
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+.env.*.local
+
+# os / ide
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
+
+# logs / coverage
+*.log
+npm-debug.log*
+coverage
+.turbo
+
+# extension packaged
+*.crx
+*.pem
+apps/extension/dist
+
+# local data
+data/*.db
+data/*.sqlite
+*.sqlite
+.cache
