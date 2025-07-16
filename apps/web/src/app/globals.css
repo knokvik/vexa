@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  @apply bg-ink-950 text-zinc-100 antialiased;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(110, 231, 255, 0.12), transparent),
+    radial-gradient(ellipse 40% 30% at 100% 0%, rgba(134, 239, 172, 0.06), transparent);
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-white/5 bg-ink-900/80 shadow-card backdrop-blur;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition;
+  }
+
+  .btn-primary {
+    @apply btn bg-accent text-ink-950 hover:bg-accent-dim;
+  }
+
+  .btn-ghost {
+    @apply btn border border-white/10 bg-white/5 text-zinc-100 hover:bg-white/10;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-white/10 bg-ink-800 px-3 py-2 text-sm text-zinc-100 outline-none ring-accent/40 placeholder:text-zinc-500 focus:ring-2;
+  }
+
+  .label {
+    @apply mb-1.5 block text-xs font-medium uppercase tracking-wide text-zinc-400;
+  }
+}
