@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Vexa One-Tap Prefill",
+  "version": "0.1.0",
+  "description": "Prefills job applications from Vexa drafts. You always click Submit — never auto-submit.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": [
+    "http://localhost:3000/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Vexa Prefill",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://localhost:3000/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

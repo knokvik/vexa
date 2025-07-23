@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Vexa</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        background: #05060a;
+        color: #f4f4f5;
+        width: 300px;
+        padding: 14px;
+      }
+      h1 {
+        font-size: 14px;
+        margin: 0 0 4px;
+      }
+      p {
+        font-size: 12px;
+        color: #a1a1aa;
+        margin: 0 0 12px;
+        line-height: 1.4;
+      }
+      button {
+        width: 100%;
+        border: 0;
+        border-radius: 10px;
+        padding: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        background: #6ee7ff;
+        color: #05060a;
+      }
+      button.secondary {
+        margin-top: 8px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #f4f4f5;
+      }
+      .ok {
+        color: #86efac;
+        font-size: 11px;
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Vexa One-Tap Prefill</h1>
+    <p>
+      Prefills the current page from your latest draft package. Submission is
+      always your click — never automated.
+    </p>
+    <button id="prefill">Prefill this page</button>
+    <button id="clear" class="secondary">Clear saved package</button>
+    <div id="status" class="ok"></div>
+    <script src="popup.js"></script>
+  </body>
+</html>
