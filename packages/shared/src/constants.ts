@@ -1,3 +1,5 @@
+import type { PlatformDefinition } from "./types/platforms";
+
 /** Quality-first volume caps — not spray-and-pray. */
 export const VOLUME_CAPS = {
   maxDraftsPerDay: 10,
@@ -50,3 +52,63 @@ export const DEFAULT_TEMPLATES = [
 
 export const APP_NAME = "Vexa";
 export const APP_TAGLINE = "Apply smarter. Stay human.";
+
+/** Catalog of connectable platforms (OAuth wired later; demo connect works now). */
+export const PLATFORM_CATALOG: PlatformDefinition[] = [
+  {
+    id: "linkedin",
+    name: "LinkedIn",
+    description:
+      "Sync headline, experience, and skills before tailoring resumes.",
+    syncScopes: ["profile", "experience", "skills"],
+    oauthReady: false,
+    brandColor: "#0A66C2",
+    icon: "in",
+  },
+  {
+    id: "x",
+    name: "X (Twitter)",
+    description: "Pull bio and interests for voice-matching cover notes.",
+    syncScopes: ["profile", "posts"],
+    oauthReady: false,
+    brandColor: "#E7E9EA",
+    icon: "𝕏",
+  },
+  {
+    id: "github",
+    name: "GitHub",
+    description: "Import languages, pinned projects, and activity signals.",
+    syncScopes: ["skills", "portfolio"],
+    oauthReady: false,
+    brandColor: "#f0f6fc",
+    icon: "gh",
+  },
+  {
+    id: "google",
+    name: "Google",
+    description: "Verify email identity and calendar availability hints.",
+    syncScopes: ["profile"],
+    oauthReady: false,
+    brandColor: "#EA4335",
+    icon: "G",
+  },
+  {
+    id: "indeed",
+    name: "Indeed",
+    description: "Optional job-alert preferences for discovery (read-only).",
+    syncScopes: ["job_alerts", "profile"],
+    oauthReady: false,
+    brandColor: "#2164f3",
+    icon: "Id",
+  },
+  {
+    id: "wellfound",
+    name: "Wellfound",
+    description:
+      "Startup roles + profile preferences for founder-led companies.",
+    syncScopes: ["profile", "job_alerts"],
+    oauthReady: false,
+    brandColor: "#ff5a5f",
+    icon: "Wf",
+  },
+];

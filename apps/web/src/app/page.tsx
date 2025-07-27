@@ -11,6 +11,7 @@ export default function DashboardPage() {
   const review = drafts.filter((d) => d.status === "requires_review").length;
   const submitted = drafts.filter((d) => d.status === "submitted").length;
   const used = store.draftsTodayCount();
+  const sync = store.getSyncStatus();
 
   return (
     <div className="space-y-8">
@@ -26,6 +27,9 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Link href="/connections" className="btn-ghost">
+            Connections
+          </Link>
           <Link href="/onboarding" className="btn-ghost">
             Edit profile
           </Link>
@@ -40,7 +44,14 @@ export default function DashboardPage() {
           { label: "Jobs matched", value: jobs.length, hint: "Active listings" },
           { label: "Ready drafts", value: ready, hint: "One-tap apply" },
           { label: "Needs review", value: review, hint: "Below threshold" },
-          { label: "Submitted", value: submitted, hint: "You clicked submit" },
+          {
+            label: "Platforms linked",
+            value: sync.connectedCount,
+            hint:
+              sync.staleCount > 0
+                ? `${sync.staleCount} need daily sync`
+                : "Daily sync ready",
+          },
         ].map((s) => (
           <div key={s.label} className="card p-5">
             <div className="text-xs uppercase tracking-wide text-zinc-500">
@@ -91,6 +102,26 @@ export default function DashboardPage() {
             </li>
           </ul>
         </div>
+      </div>
+
+      <div className="card flex flex-col gap-4 p-6 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-lg font-medium">Connected data sources</h2>
+          <p className="mt-1 text-sm text-zinc-400">
+            {sync.connectedCount === 0
+              ? "No platforms connected yet. Link LinkedIn, X, GitHub so resumes use fresh profile data."
+              : `${sync.connectedCount} connected · ${sync.syncEnabledCount} daily sync on · pre-apply sync ${sync.syncBeforeApply ? "enabled" : "off"}.`}
+          </p>
+          {sync.lastSyncReport && (
+            <p className="mt-2 font-mono text-xs text-zinc-500">
+              Last sync: {sync.lastSyncReport.triggeredBy} ·{" "}
+              {new Date(sync.lastSyncReport.ranAt).toLocaleString()}
+            </p>
+          )}
+        </div>
+        <Link href="/connections" className="btn-primary shrink-0">
+          Manage connections
+        </Link>
       </div>
     </div>
   );

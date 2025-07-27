@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { store } from "@/lib/store";
 
 export async function POST() {
-  const { results } = store.startAutomation();
+  const { results, sync } = store.startAutomation();
   const prepared = results.filter((r) => !("error" in r)).length;
   const errors = results
     .filter((r): r is { error: string } => "error" in r)
@@ -12,7 +12,8 @@ export async function POST() {
     enabled: true,
     prepared,
     errors,
+    sync,
     message:
-      "Drafts prepared with humanized resumes. Open Draft Inbox for one-tap apply. Server never auto-submits.",
+      "Synced connected platforms (if stale), then prepared humanized drafts. Open Draft Inbox. Server never auto-submits.",
   });
 }

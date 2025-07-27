@@ -7,6 +7,7 @@ import { APP_NAME, APP_TAGLINE } from "@vexa/shared";
 const NAV = [
   { href: "/", label: "Dashboard" },
   { href: "/onboarding", label: "Profile" },
+  { href: "/connections", label: "Connections" },
   { href: "/jobs", label: "Jobs" },
   { href: "/inbox", label: "Draft Inbox" },
   { href: "/resumes", label: "Resumes" },

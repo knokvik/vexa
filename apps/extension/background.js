@@ -2,7 +2,7 @@
  * Vexa extension background — packages only, never submits forms.
  */
 
-const API_BASE = "http://localhost:3000";
+const API_BASE = "http://127.0.0.1:5173";
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "FETCH_PACKAGE") {

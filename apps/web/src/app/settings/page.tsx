@@ -1,4 +1,5 @@
-import { VOLUME_CAPS, SHORTLIST_THRESHOLDS } from "@vexa/shared";
+import Link from "next/link";
+import { VOLUME_CAPS, SHORTLIST_THRESHOLDS, PLATFORM_SYNC_MAX_AGE_HOURS } from "@vexa/shared";
 
 export default function SettingsPage() {
   return (
@@ -6,6 +7,18 @@ export default function SettingsPage() {
       <div>
         <p className="text-sm text-accent">Settings</p>
         <h1 className="mt-1 text-3xl font-semibold">Safety & preferences</h1>
+      </div>
+
+      <div className="card space-y-3 p-6">
+        <h2 className="text-lg font-medium">Platform connections</h2>
+        <p className="text-sm text-zinc-400">
+          Connect LinkedIn, X, GitHub, and more. Data refreshes at least every{" "}
+          {PLATFORM_SYNC_MAX_AGE_HOURS} hours and again before drafts/apply when
+          sync-before-apply is on.
+        </p>
+        <Link href="/connections" className="btn-primary inline-flex">
+          Open connections
+        </Link>
       </div>
 
       <div className="card space-y-4 p-6">

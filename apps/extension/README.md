@@ -11,7 +11,7 @@
 1. Open `chrome://extensions`
 2. Enable Developer mode
 3. Load unpacked → select this folder (`apps/extension`)
-4. Run the web app on `http://localhost:3000`
+4. Run the web app on `http://127.0.0.1:5173`
 5. Prepare a draft → Draft Inbox → **Apply now**
 6. On the job page, open the extension popup → **Prefill this page**
 

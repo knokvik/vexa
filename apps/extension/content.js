@@ -144,6 +144,6 @@ chrome.runtime.sendMessage({ type: "GET_LAST_PACKAGE" }, (res) => {
   }
 });
 
-if (location.origin.includes("localhost:3000")) {
+if (location.origin.includes("5173")) {
   tryLocalStorageBridge();
 }
