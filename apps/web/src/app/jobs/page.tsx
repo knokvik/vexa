@@ -1,8 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { JobListing } from "@vexa/shared";
 import Link from "next/link";
+import type { JobListing } from "@vexa/shared";
+import { ExternalLink, Loader2 } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<JobListing[]>([]);
@@ -52,87 +64,80 @@ export default function JobsPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <p className="text-sm text-accent">Job discovery</p>
-          <h1 className="mt-1 text-3xl font-semibold">Matched roles</h1>
-          <p className="mt-2 max-w-xl text-sm text-zinc-400">
-            MVP uses demo + ingest adapters. Production: Firecrawl → Exa →
-            Bright Data for public listings only.
-          </p>
-        </div>
-        <button
-          className="btn-primary"
-          disabled={running}
-          onClick={startAutomation}
-        >
-          {running ? "Running…" : "Start automation"}
-        </button>
-      </div>
+      <PageHeader
+        eyebrow="Job discovery"
+        title="Matched roles"
+        description="MVP uses demo + ingest adapters. Production: Firecrawl → Exa → Bright Data for public listings only."
+        actions={
+          <Button disabled={running} onClick={startAutomation}>
+            {running && <Loader2 className="animate-spin" />}
+            {running ? "Running…" : "Start automation"}
+          </Button>
+        }
+      />
 
       {note && (
-        <div className="rounded-xl border border-accent/20 bg-accent/10 px-4 py-3 text-sm text-accent">
-          {note}{" "}
-          <Link href="/inbox" className="underline">
-            Open inbox
-          </Link>
-        </div>
+        <Alert>
+          <AlertDescription>
+            {note}{" "}
+            <Link href="/inbox" className="font-medium text-primary underline">
+              Open inbox
+            </Link>
+          </AlertDescription>
+        </Alert>
       )}
 
       <div className="space-y-3">
         {jobs.map((job) => (
-          <div
-            key={job.id}
-            className="card flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between"
-          >
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg font-medium">{job.title}</h2>
-                <span className="badge bg-white/5 text-zinc-400">
-                  {job.source}
-                </span>
-                {job.location.remote && (
-                  <span className="badge bg-mint/15 text-mint">Remote</span>
-                )}
+          <Card key={job.id}>
+            <CardHeader className="flex flex-col gap-3 space-y-0 md:flex-row md:items-start md:justify-between">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <CardTitle className="text-lg">{job.title}</CardTitle>
+                  <Badge variant="secondary">{job.source}</Badge>
+                  {job.location.remote && (
+                    <Badge variant="success">Remote</Badge>
+                  )}
+                </div>
+                <CardDescription>
+                  {job.company}
+                  {job.location.city ? ` · ${job.location.city}` : ""}
+                  {job.salary?.min
+                    ? ` · $${(job.salary.min / 1000).toFixed(0)}k–${(
+                        (job.salary.max ?? job.salary.min) / 1000
+                      ).toFixed(0)}k`
+                    : ""}
+                </CardDescription>
               </div>
-              <p className="mt-1 text-sm text-zinc-400">
-                {job.company}
-                {job.location.city ? ` · ${job.location.city}` : ""}
-                {job.salary?.min
-                  ? ` · $${(job.salary.min / 1000).toFixed(0)}k–${(
-                      (job.salary.max ?? job.salary.min) / 1000
-                    ).toFixed(0)}k`
-                  : ""}
-              </p>
-              <p className="mt-2 line-clamp-2 text-sm text-zinc-500">
+              <div className="flex shrink-0 gap-2">
+                <Button variant="outline" size="sm" asChild>
+                  <a href={job.externalUrl} target="_blank" rel="noreferrer">
+                    View <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={busyId === job.id}
+                  onClick={() => prepare(job.id)}
+                >
+                  {busyId === job.id && <Loader2 className="animate-spin" />}
+                  {busyId === job.id ? "Preparing…" : "Prepare draft"}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="line-clamp-2 text-sm text-muted-foreground">
                 {job.description}
               </p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-1.5">
                 {job.skillsRequired.slice(0, 6).map((s) => (
-                  <span key={s} className="badge bg-ink-800 text-zinc-300">
+                  <Badge key={s} variant="outline">
                     {s}
-                  </span>
+                  </Badge>
                 ))}
               </div>
-            </div>
-            <div className="flex shrink-0 gap-2">
-              <a
-                href={job.externalUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="btn-ghost"
-              >
-                View
-              </a>
-              <button
-                className="btn-primary"
-                disabled={busyId === job.id}
-                onClick={() => prepare(job.id)}
-              >
-                {busyId === job.id ? "Preparing…" : "Prepare draft"}
-              </button>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
     </div>

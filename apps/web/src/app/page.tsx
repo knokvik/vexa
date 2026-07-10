@@ -1,7 +1,18 @@
 import Link from "next/link";
+import { CheckCircle2, Link2 } from "lucide-react";
 import { VOLUME_CAPS } from "@vexa/shared";
 import { store } from "@/lib/store";
-import { ScoreBar } from "@/components/ScoreBar";
+import { ScoreBar } from "@/components/score-bar";
+import { PageHeader } from "@/components/page-header";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 export default function DashboardPage() {
   const profile = store.getProfile();
@@ -9,120 +20,136 @@ export default function DashboardPage() {
   const drafts = store.listDrafts();
   const ready = drafts.filter((d) => d.status === "ready").length;
   const review = drafts.filter((d) => d.status === "requires_review").length;
-  const submitted = drafts.filter((d) => d.status === "submitted").length;
   const used = store.draftsTodayCount();
   const sync = store.getSyncStatus();
 
+  const stats = [
+    { label: "Jobs matched", value: jobs.length, hint: "Active listings" },
+    { label: "Ready drafts", value: ready, hint: "One-tap apply" },
+    { label: "Needs review", value: review, hint: "Below threshold" },
+    {
+      label: "Platforms linked",
+      value: sync.connectedCount,
+      hint:
+        sync.staleCount > 0
+          ? `${sync.staleCount} need daily sync`
+          : "Daily sync ready",
+    },
+  ];
+
   return (
     <div className="space-y-8">
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <p className="text-sm text-accent">Dashboard</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">
-            Welcome back, {profile.fullName.split(" ")[0]}
-          </h1>
-          <p className="mt-2 max-w-xl text-sm text-zinc-400">
-            Quality-first automation: humanized resumes, ATS + shortlist scores,
-            one-tap apply from your browser. We never auto-submit for you.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/connections" className="btn-ghost">
-            Connections
-          </Link>
-          <Link href="/onboarding" className="btn-ghost">
-            Edit profile
-          </Link>
-          <Link href="/jobs" className="btn-primary">
-            Start pipeline
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Dashboard"
+        title={`Welcome back, ${profile.fullName.split(" ")[0]}`}
+        description="Quality-first automation: humanized resumes, ATS + shortlist scores, one-tap apply from your browser. We never auto-submit for you."
+        actions={
+          <>
+            <Button variant="outline" asChild>
+              <Link href="/connections">Connections</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/onboarding">Edit profile</Link>
+            </Button>
+            <Button asChild>
+              <Link href="/jobs">Start pipeline</Link>
+            </Button>
+          </>
+        }
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          { label: "Jobs matched", value: jobs.length, hint: "Active listings" },
-          { label: "Ready drafts", value: ready, hint: "One-tap apply" },
-          { label: "Needs review", value: review, hint: "Below threshold" },
-          {
-            label: "Platforms linked",
-            value: sync.connectedCount,
-            hint:
-              sync.staleCount > 0
-                ? `${sync.staleCount} need daily sync`
-                : "Daily sync ready",
-          },
-        ].map((s) => (
-          <div key={s.label} className="card p-5">
-            <div className="text-xs uppercase tracking-wide text-zinc-500">
-              {s.label}
-            </div>
-            <div className="mt-2 font-mono text-3xl font-semibold">{s.value}</div>
-            <div className="mt-1 text-xs text-zinc-500">{s.hint}</div>
-          </div>
+        {stats.map((s) => (
+          <Card key={s.label}>
+            <CardHeader className="pb-2">
+              <CardDescription>{s.label}</CardDescription>
+              <CardTitle className="font-mono text-3xl tabular-nums">
+                {s.value}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">{s.hint}</p>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="card space-y-4 p-6 lg:col-span-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-medium">Today&apos;s quality cap</h2>
-            <span className="badge bg-accent/15 text-accent">
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <div>
+              <CardTitle>Today&apos;s quality cap</CardTitle>
+              <CardDescription>
+                Caps protect accounts and response rates.
+              </CardDescription>
+            </div>
+            <Badge variant="secondary">
               {used}/{VOLUME_CAPS.maxDraftsPerDay} drafts
-            </span>
-          </div>
-          <ScoreBar
-            label="Volume used"
-            value={(used / VOLUME_CAPS.maxDraftsPerDay) * 100}
-            tone={used >= VOLUME_CAPS.maxDraftsPerDay ? "warn" : "accent"}
-          />
-          <p className="text-sm text-zinc-400">
-            Cap protects your accounts and response rates. Competitors spray
-            1,500 generic apps — we aim for ~10 tailored ones.
-          </p>
-          <Link href="/inbox" className="btn-ghost">
-            Open Draft Inbox →
-          </Link>
-        </div>
-
-        <div className="card space-y-3 p-6">
-          <h2 className="text-lg font-medium">Safety model</h2>
-          <ul className="space-y-2 text-sm text-zinc-400">
-            <li className="flex gap-2">
-              <span className="text-mint">✓</span> Draft + one-tap only
-            </li>
-            <li className="flex gap-2">
-              <span className="text-mint">✓</span> Submit from your browser
-            </li>
-            <li className="flex gap-2">
-              <span className="text-mint">✓</span> No server-side auto-apply
-            </li>
-            <li className="flex gap-2">
-              <span className="text-mint">✓</span> Errors notify you
-            </li>
-          </ul>
-        </div>
-      </div>
-
-      <div className="card flex flex-col gap-4 p-6 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 className="text-lg font-medium">Connected data sources</h2>
-          <p className="mt-1 text-sm text-zinc-400">
-            {sync.connectedCount === 0
-              ? "No platforms connected yet. Link LinkedIn, X, GitHub so resumes use fresh profile data."
-              : `${sync.connectedCount} connected · ${sync.syncEnabledCount} daily sync on · pre-apply sync ${sync.syncBeforeApply ? "enabled" : "off"}.`}
-          </p>
-          {sync.lastSyncReport && (
-            <p className="mt-2 font-mono text-xs text-zinc-500">
-              Last sync: {sync.lastSyncReport.triggeredBy} ·{" "}
-              {new Date(sync.lastSyncReport.ranAt).toLocaleString()}
+            </Badge>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <ScoreBar
+              label="Volume used"
+              value={(used / VOLUME_CAPS.maxDraftsPerDay) * 100}
+              tone={used >= VOLUME_CAPS.maxDraftsPerDay ? "warning" : "primary"}
+            />
+            <p className="text-sm text-muted-foreground">
+              Competitors spray 1,500 generic apps — we aim for ~10 tailored
+              ones.
             </p>
-          )}
-        </div>
-        <Link href="/connections" className="btn-primary shrink-0">
-          Manage connections
-        </Link>
+            <Button variant="outline" asChild>
+              <Link href="/inbox">Open Draft Inbox →</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Safety model</CardTitle>
+            <CardDescription>Built-in guardrails</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-3 text-sm text-muted-foreground">
+              {[
+                "Draft + one-tap only",
+                "Submit from your browser",
+                "No server-side auto-apply",
+                "Errors notify you",
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-2">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-success" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
       </div>
+
+      <Card>
+        <CardContent className="flex flex-col gap-4 p-6 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Link2 className="h-4 w-4 text-primary" />
+              <h2 className="text-lg font-semibold">Connected data sources</h2>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {sync.connectedCount === 0
+                ? "No platforms connected yet. Link LinkedIn, X, GitHub so resumes use fresh profile data."
+                : `${sync.connectedCount} connected · ${sync.syncEnabledCount} daily sync on · pre-apply sync ${sync.syncBeforeApply ? "enabled" : "off"}.`}
+            </p>
+            {sync.lastSyncReport && (
+              <p className="font-mono text-xs text-muted-foreground">
+                Last sync: {sync.lastSyncReport.triggeredBy} ·{" "}
+                {new Date(sync.lastSyncReport.ranAt).toLocaleString()}
+              </p>
+            )}
+          </div>
+          <Button asChild className="shrink-0">
+            <Link href="/connections">Manage connections</Link>
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }

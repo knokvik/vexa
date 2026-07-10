@@ -2,9 +2,31 @@
 
 import { useEffect, useState } from "react";
 import type { ApplicationDraft, JobListing } from "@vexa/shared";
-import { ScoreBar } from "@/components/ScoreBar";
+import { PageHeader } from "@/components/page-header";
+import { ScoreBar } from "@/components/score-bar";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { CheckCircle2 } from "lucide-react";
 
 type Row = ApplicationDraft & { job?: JobListing };
+
+function statusVariant(
+  status: string
+): "success" | "warning" | "secondary" | "destructive" | "default" {
+  if (status === "ready") return "success";
+  if (status === "requires_review") return "warning";
+  if (status === "submitted") return "default";
+  if (status === "failed") return "destructive";
+  return "secondary";
+}
 
 export default function InboxPage() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -29,9 +51,7 @@ export default function InboxPage() {
       return;
     }
     const pkg = data.package;
-    // Open job URL — extension will prefill when installed.
     window.open(pkg.jobUrl, "_blank", "noopener,noreferrer");
-    // Store package for extension bridge via localStorage
     localStorage.setItem("vexa:lastApplyPackage", JSON.stringify(pkg));
     setMessage(
       `Opened ${pkg.company} — ${pkg.jobTitle}. Extension prefills; you click Submit.`
@@ -49,117 +69,103 @@ export default function InboxPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-sm text-accent">Draft Inbox</p>
-        <h1 className="mt-1 text-3xl font-semibold">Ready to apply</h1>
-        <p className="mt-2 max-w-2xl text-sm text-zinc-400">
-          Each card is a tailored, humanized package. One tap opens the job with
-          prefill data — submission is always your click.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Draft Inbox"
+        title="Ready to apply"
+        description="Each card is a tailored, humanized package. One tap opens the job with prefill data — submission is always your click."
+      />
 
       {message && (
-        <div className="rounded-xl border border-mint/20 bg-mint/10 px-4 py-3 text-sm text-mint">
-          {message}
-        </div>
+        <Alert variant="success">
+          <CheckCircle2 className="h-4 w-4" />
+          <AlertDescription>{message}</AlertDescription>
+        </Alert>
       )}
 
       {rows.length === 0 && (
-        <div className="card p-10 text-center text-sm text-zinc-500">
-          No drafts yet. Go to Jobs and hit Start automation or Prepare draft.
-        </div>
+        <Card>
+          <CardContent className="py-10 text-center text-sm text-muted-foreground">
+            No drafts yet. Go to Jobs and hit Start automation or Prepare draft.
+          </CardContent>
+        </Card>
       )}
 
       <div className="space-y-4">
         {rows.map((row) => {
           const pct = Math.round((row.shortlistProbability ?? 0) * 100);
           const tone =
-            pct >= 85 ? "mint" : pct >= 72 ? "accent" : ("warn" as const);
+            pct >= 85 ? "success" : pct >= 72 ? "primary" : ("warning" as const);
           return (
-            <div key={row.id} className="card p-6">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <Card key={row.id}>
+              <CardHeader className="flex flex-col gap-4 space-y-0 lg:flex-row lg:items-start lg:justify-between">
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-xl font-medium">
-                      {row.job?.company ?? "Company"} — {row.job?.title ?? "Role"}
-                    </h2>
-                    <span
-                      className={`badge ${
-                        row.status === "ready"
-                          ? "bg-mint/15 text-mint"
-                          : row.status === "requires_review"
-                            ? "bg-warn/15 text-warn"
-                            : row.status === "submitted"
-                              ? "bg-accent/15 text-accent"
-                              : row.status === "failed"
-                                ? "bg-danger/15 text-danger"
-                                : "bg-white/5 text-zinc-400"
-                      }`}
-                    >
+                    <CardTitle className="text-xl">
+                      {row.job?.company ?? "Company"} —{" "}
+                      {row.job?.title ?? "Role"}
+                    </CardTitle>
+                    <Badge variant={statusVariant(row.status)}>
                       {row.status}
-                    </span>
+                    </Badge>
                   </div>
-                  <p className="text-sm text-zinc-500">
-                    Template pipeline · match {row.matchScore ?? "—"} · shortlist{" "}
-                    {pct}%
-                  </p>
+                  <CardDescription>
+                    Template pipeline · match {row.matchScore ?? "—"} ·
+                    shortlist {pct}%
+                  </CardDescription>
                   {row.errorMessage && (
-                    <p className="text-sm text-danger">{row.errorMessage}</p>
+                    <p className="text-sm text-destructive">{row.errorMessage}</p>
                   )}
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                   {(row.status === "ready" ||
                     row.status === "requires_review") && (
-                    <button
-                      className="btn-primary"
-                      onClick={() => oneTap(row.id)}
-                    >
-                      Apply now
-                    </button>
+                    <Button onClick={() => oneTap(row.id)}>Apply now</Button>
                   )}
                   {row.status !== "submitted" && (
-                    <button
-                      className="btn-ghost"
+                    <Button
+                      variant="outline"
                       onClick={() => markSubmitted(row.id)}
                     >
                       Mark submitted
-                    </button>
+                    </Button>
                   )}
                 </div>
-              </div>
-
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <ScoreBar
-                  label="Match / ATS"
-                  value={row.matchScore ?? 0}
-                  tone="accent"
-                />
-                <ScoreBar label="Shortlist probability" value={pct} tone={tone} />
-              </div>
-
-              {row.shortlistFactors && row.shortlistFactors.length > 0 && (
-                <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                  {row.shortlistFactors.map((f) => (
-                    <div
-                      key={f.factor}
-                      className="rounded-xl border border-white/5 bg-ink-800/40 px-3 py-2 text-xs"
-                    >
-                      <div className="flex justify-between text-zinc-300">
-                        <span className="font-medium">
-                          {f.factor.replace(/_/g, " ")}
-                        </span>
-                        <span className="font-mono">
-                          {Math.round(f.score * 100)}%
-                        </span>
-                      </div>
-                      {f.note && (
-                        <p className="mt-1 text-zinc-500">{f.note}</p>
-                      )}
-                    </div>
-                  ))}
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <ScoreBar
+                    label="Match / ATS"
+                    value={row.matchScore ?? 0}
+                    tone="primary"
+                  />
+                  <ScoreBar
+                    label="Shortlist probability"
+                    value={pct}
+                    tone={tone}
+                  />
                 </div>
-              )}
-            </div>
+                {row.shortlistFactors && row.shortlistFactors.length > 0 && (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {row.shortlistFactors.map((f) => (
+                      <div
+                        key={f.factor}
+                        className="rounded-lg border bg-muted/40 px-3 py-2 text-xs"
+                      >
+                        <div className="flex justify-between font-medium">
+                          <span>{f.factor.replace(/_/g, " ")}</span>
+                          <span className="font-mono">
+                            {Math.round(f.score * 100)}%
+                          </span>
+                        </div>
+                        {f.note && (
+                          <p className="mt-1 text-muted-foreground">{f.note}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           );
         })}
       </div>

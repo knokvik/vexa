@@ -2,17 +2,81 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  Briefcase,
+  FileText,
+  Home,
+  Inbox,
+  Link2,
+  Menu,
+  Settings,
+  UserRound,
+} from "lucide-react";
 import { APP_NAME, APP_TAGLINE } from "@vexa/shared";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { ModeToggle } from "@/components/mode-toggle";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { Separator } from "@/components/ui/separator";
 
 const NAV = [
-  { href: "/", label: "Dashboard" },
-  { href: "/onboarding", label: "Profile" },
-  { href: "/connections", label: "Connections" },
-  { href: "/jobs", label: "Jobs" },
-  { href: "/inbox", label: "Draft Inbox" },
-  { href: "/resumes", label: "Resumes" },
-  { href: "/settings", label: "Settings" },
+  { href: "/", label: "Dashboard", icon: Home },
+  { href: "/onboarding", label: "Profile", icon: UserRound },
+  { href: "/connections", label: "Connections", icon: Link2 },
+  { href: "/jobs", label: "Jobs", icon: Briefcase },
+  { href: "/inbox", label: "Draft Inbox", icon: Inbox },
+  { href: "/resumes", label: "Resumes", icon: FileText },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
+
+function NavLinks({
+  pathname,
+  onNavigate,
+  vertical,
+}: {
+  pathname: string;
+  onNavigate?: () => void;
+  vertical?: boolean;
+}) {
+  return (
+    <nav
+      className={cn(
+        vertical ? "flex flex-col gap-1" : "hidden items-center gap-1 md:flex"
+      )}
+    >
+      {NAV.map((item) => {
+        const active =
+          item.href === "/"
+            ? pathname === "/"
+            : pathname.startsWith(item.href);
+        const Icon = item.icon;
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={onNavigate}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
+              vertical && "w-full",
+              active
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -23,45 +87,52 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="sticky top-0 z-40 border-b border-white/5 bg-ink-950/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
-          <Link href="/" className="group flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/15 font-mono text-sm font-bold text-accent shadow-glow">
-              Vx
-            </span>
-            <div>
-              <div className="text-sm font-semibold tracking-tight">{APP_NAME}</div>
-              <div className="text-[11px] text-zinc-500">{APP_TAGLINE}</div>
-            </div>
-          </Link>
-          <nav className="hidden items-center gap-1 md:flex">
-            {NAV.map((item) => {
-              const active =
-                item.href === "/"
-                  ? pathname === "/"
-                  : pathname.startsWith(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`rounded-lg px-3 py-1.5 text-sm transition ${
-                    active
-                      ? "bg-white/10 text-white"
-                      : "text-zinc-400 hover:bg-white/5 hover:text-zinc-100"
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-          <Link href="/inbox" className="btn-primary text-xs md:text-sm">
-            Ready to apply
-          </Link>
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur-xl">
+        <div className="container flex h-14 items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="icon" className="md:hidden">
+                  <Menu className="h-4 w-4" />
+                  <span className="sr-only">Open menu</span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-72">
+                <SheetHeader>
+                  <SheetTitle>{APP_NAME}</SheetTitle>
+                </SheetHeader>
+                <Separator className="my-4" />
+                <NavLinks pathname={pathname} vertical />
+              </SheetContent>
+            </Sheet>
+
+            <Link href="/" className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary font-mono text-xs font-bold text-primary-foreground">
+                Vx
+              </span>
+              <div className="hidden leading-tight sm:block">
+                <div className="text-sm font-semibold tracking-tight">
+                  {APP_NAME}
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  {APP_TAGLINE}
+                </div>
+              </div>
+            </Link>
+          </div>
+
+          <NavLinks pathname={pathname} />
+
+          <div className="flex items-center gap-2">
+            <ModeToggle />
+            <Button asChild size="sm">
+              <Link href="/inbox">Ready to apply</Link>
+            </Button>
+          </div>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
+      <main className="container py-8">{children}</main>
     </div>
   );
 }

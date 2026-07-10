@@ -1,28 +1,32 @@
 import Link from "next/link";
 import { APP_NAME, APP_TAGLINE } from "@vexa/shared";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ModeToggle } from "@/components/mode-toggle";
 
 export default function WelcomePage() {
   return (
-    <div className="min-h-screen">
-      <div className="mx-auto flex max-w-4xl flex-col items-start gap-8 px-6 py-24">
-        <span className="badge bg-accent/15 text-accent">AI job copilot</span>
-        <h1 className="text-5xl font-semibold tracking-tight">
-          {APP_NAME}
-          <span className="mt-3 block text-xl font-normal text-zinc-400">
-            {APP_TAGLINE}
-          </span>
-        </h1>
-        <p className="max-w-xl text-lg text-zinc-400">
-          Humanized resumes. ATS + shortlist scores. Draft inbox. One-tap prefill
-          from your browser — you always click submit.
+    <div className="min-h-screen bg-background">
+      <div className="container flex justify-end py-4">
+        <ModeToggle />
+      </div>
+      <div className="container flex max-w-4xl flex-col items-start gap-8 pb-24 pt-12">
+        <Badge variant="secondary">AI job copilot</Badge>
+        <div className="space-y-3">
+          <h1 className="text-5xl font-semibold tracking-tight">{APP_NAME}</h1>
+          <p className="text-xl text-muted-foreground">{APP_TAGLINE}</p>
+        </div>
+        <p className="max-w-xl text-lg text-muted-foreground">
+          Humanized resumes. ATS + shortlist scores. Draft inbox. One-tap
+          prefill from your browser — you always click submit.
         </p>
-        <div className="flex gap-3">
-          <Link href="/" className="btn-primary">
-            Open dashboard
-          </Link>
-          <Link href="/onboarding" className="btn-ghost">
-            Set up profile
-          </Link>
+        <div className="flex flex-wrap gap-3">
+          <Button size="lg" asChild>
+            <Link href="/">Open dashboard</Link>
+          </Button>
+          <Button size="lg" variant="outline" asChild>
+            <Link href="/onboarding">Set up profile</Link>
+          </Button>
         </div>
       </div>
     </div>

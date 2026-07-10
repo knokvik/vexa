@@ -3,6 +3,21 @@
 import { useEffect, useState } from "react";
 import type { Profile } from "@vexa/shared";
 import { DEFAULT_TEMPLATES } from "@vexa/shared";
+import { PageHeader } from "@/components/page-header";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { CheckCircle2 } from "lucide-react";
 
 export default function OnboardingPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -31,122 +46,142 @@ export default function OnboardingPage() {
   }
 
   if (!profile) {
-    return <div className="text-sm text-zinc-400">Loading profile…</div>;
+    return <div className="text-sm text-muted-foreground">Loading profile…</div>;
   }
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">
-      <div>
-        <p className="text-sm text-accent">Onboarding</p>
-        <h1 className="mt-1 text-3xl font-semibold">Your profile</h1>
-        <p className="mt-2 text-sm text-zinc-400">
-          Enter details once. Vexa humanizes and tailors them per job.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Onboarding"
+        title="Your profile"
+        description="Enter details once. Vexa humanizes and tailors them per job."
+      />
 
-      <div className="card space-y-4 p-6">
-        <div>
-          <label className="label">Full name</label>
-          <input
-            className="input"
-            value={profile.fullName}
-            onChange={(e) => setProfile({ ...profile, fullName: e.target.value })}
-          />
-        </div>
-        <div>
-          <label className="label">Headline</label>
-          <input
-            className="input"
-            value={profile.headline ?? ""}
-            onChange={(e) => setProfile({ ...profile, headline: e.target.value })}
-          />
-        </div>
-        <div>
-          <label className="label">Summary</label>
-          <textarea
-            className="input min-h-28"
-            value={profile.summary ?? ""}
-            onChange={(e) => setProfile({ ...profile, summary: e.target.value })}
-          />
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="label">Location</label>
-            <input
-              className="input"
-              value={profile.location ?? ""}
+      {message && (
+        <Alert variant="success">
+          <CheckCircle2 className="h-4 w-4" />
+          <AlertDescription>{message}</AlertDescription>
+        </Alert>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Basics</CardTitle>
+          <CardDescription>Identity and narrative used on resumes.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="fullName">Full name</Label>
+            <Input
+              id="fullName"
+              value={profile.fullName}
               onChange={(e) =>
-                setProfile({ ...profile, location: e.target.value })
+                setProfile({ ...profile, fullName: e.target.value })
               }
             />
           </div>
-          <div>
-            <label className="label">Years experience</label>
-            <input
-              type="number"
-              className="input"
-              value={profile.yearsExperience ?? 0}
+          <div className="space-y-2">
+            <Label htmlFor="headline">Headline</Label>
+            <Input
+              id="headline"
+              value={profile.headline ?? ""}
+              onChange={(e) =>
+                setProfile({ ...profile, headline: e.target.value })
+              }
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="summary">Summary</Label>
+            <Textarea
+              id="summary"
+              className="min-h-28"
+              value={profile.summary ?? ""}
+              onChange={(e) =>
+                setProfile({ ...profile, summary: e.target.value })
+              }
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="location">Location</Label>
+              <Input
+                id="location"
+                value={profile.location ?? ""}
+                onChange={(e) =>
+                  setProfile({ ...profile, location: e.target.value })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="years">Years experience</Label>
+              <Input
+                id="years"
+                type="number"
+                value={profile.yearsExperience ?? 0}
+                onChange={(e) =>
+                  setProfile({
+                    ...profile,
+                    yearsExperience: Number(e.target.value),
+                  })
+                }
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="interests">Interests (comma-separated)</Label>
+            <Input
+              id="interests"
+              value={profile.interests.join(", ")}
               onChange={(e) =>
                 setProfile({
                   ...profile,
-                  yearsExperience: Number(e.target.value),
+                  interests: e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean),
                 })
               }
             />
           </div>
-        </div>
-        <div>
-          <label className="label">Interests (comma-separated)</label>
-          <input
-            className="input"
-            value={profile.interests.join(", ")}
-            onChange={(e) =>
-              setProfile({
-                ...profile,
-                interests: e.target.value
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean),
-              })
-            }
-          />
-        </div>
-        <div>
-          <label className="label">Skills (comma-separated)</label>
-          <input
-            className="input"
-            value={profile.skills.map((s) => s.name).join(", ")}
-            onChange={(e) =>
-              setProfile({
-                ...profile,
-                skills: e.target.value
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean)
-                  .map((name, i) => ({
-                    id: `skill_${i}`,
-                    name,
-                    proficiency: "advanced" as const,
-                  })),
-              })
-            }
-          />
-        </div>
-      </div>
+          <div className="space-y-2">
+            <Label htmlFor="skills">Skills (comma-separated)</Label>
+            <Input
+              id="skills"
+              value={profile.skills.map((s) => s.name).join(", ")}
+              onChange={(e) =>
+                setProfile({
+                  ...profile,
+                  skills: e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                    .map((name, i) => ({
+                      id: `skill_${i}`,
+                      name,
+                      proficiency: "advanced" as const,
+                    })),
+                })
+              }
+            />
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="card space-y-3 p-6">
-        <h2 className="text-lg font-medium">Template priority</h2>
-        <p className="text-sm text-zinc-400">
-          Rank templates — highest priority is used first when generating.
-        </p>
-        <div className="space-y-2">
-          {DEFAULT_TEMPLATES.map((tpl, idx) => {
+      <Card>
+        <CardHeader>
+          <CardTitle>Template priority</CardTitle>
+          <CardDescription>
+            Highest priority is used first when generating.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {DEFAULT_TEMPLATES.map((tpl) => {
             const priority = profile.templatePriorities.indexOf(tpl.id);
             return (
               <button
                 key={tpl.id}
                 type="button"
-                className="flex w-full items-center justify-between rounded-xl border border-white/5 bg-ink-800/50 px-4 py-3 text-left hover:border-accent/30"
+                className="flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left transition hover:bg-accent/50"
                 onClick={() => {
                   const next = [
                     tpl.id,
@@ -157,23 +192,22 @@ export default function OnboardingPage() {
               >
                 <div>
                   <div className="text-sm font-medium">{tpl.name}</div>
-                  <div className="text-xs text-zinc-500">{tpl.description}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {tpl.description}
+                  </div>
                 </div>
-                <span className="badge bg-white/5 font-mono text-zinc-300">
-                  #{priority >= 0 ? priority + 1 : idx + 1}
-                </span>
+                <Badge variant="secondary" className="font-mono">
+                  #{priority >= 0 ? priority + 1 : "—"}
+                </Badge>
               </button>
             );
           })}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
-      <div className="flex items-center gap-3">
-        <button className="btn-primary" disabled={saving} onClick={save}>
-          {saving ? "Saving…" : "Save profile"}
-        </button>
-        {message && <span className="text-sm text-mint">{message}</span>}
-      </div>
+      <Button disabled={saving} onClick={save}>
+        {saving ? "Saving…" : "Save profile"}
+      </Button>
     </div>
   );
 }

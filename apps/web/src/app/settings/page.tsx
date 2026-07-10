@@ -1,61 +1,122 @@
 import Link from "next/link";
-import { VOLUME_CAPS, SHORTLIST_THRESHOLDS, PLATFORM_SYNC_MAX_AGE_HOURS } from "@vexa/shared";
+import {
+  VOLUME_CAPS,
+  SHORTLIST_THRESHOLDS,
+  PLATFORM_SYNC_MAX_AGE_HOURS,
+} from "@vexa/shared";
+import { PageHeader } from "@/components/page-header";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { ModeToggle } from "@/components/mode-toggle";
 
 export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-8">
-      <div>
-        <p className="text-sm text-accent">Settings</p>
-        <h1 className="mt-1 text-3xl font-semibold">Safety & preferences</h1>
-      </div>
+      <PageHeader
+        eyebrow="Settings"
+        title="Safety & preferences"
+        description="Caps, thresholds, theme, and integrations."
+      />
 
-      <div className="card space-y-3 p-6">
-        <h2 className="text-lg font-medium">Platform connections</h2>
-        <p className="text-sm text-zinc-400">
-          Connect LinkedIn, X, GitHub, and more. Data refreshes at least every{" "}
-          {PLATFORM_SYNC_MAX_AGE_HOURS} hours and again before drafts/apply when
-          sync-before-apply is on.
-        </p>
-        <Link href="/connections" className="btn-primary inline-flex">
-          Open connections
-        </Link>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Appearance</CardTitle>
+          <CardDescription>Light, dark, or system theme.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">Color mode</p>
+          <ModeToggle />
+        </CardContent>
+      </Card>
 
-      <div className="card space-y-4 p-6">
-        <h2 className="text-lg font-medium">Volume caps</h2>
-        <ul className="space-y-2 text-sm text-zinc-400">
-          <li>Max drafts / day: {VOLUME_CAPS.maxDraftsPerDay}</li>
-          <li>Max drafts / week: {VOLUME_CAPS.maxDraftsPerWeek}</li>
-          <li>Free tier drafts / month: {VOLUME_CAPS.freeDraftsPerMonth}</li>
-        </ul>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Platform connections</CardTitle>
+          <CardDescription>
+            Connect LinkedIn, X, GitHub, and more. Data refreshes at least every{" "}
+            {PLATFORM_SYNC_MAX_AGE_HOURS} hours and again before drafts/apply.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button asChild>
+            <Link href="/connections">Open connections</Link>
+          </Button>
+        </CardContent>
+      </Card>
 
-      <div className="card space-y-4 p-6">
-        <h2 className="text-lg font-medium">Shortlist thresholds</h2>
-        <ul className="space-y-2 text-sm text-zinc-400">
-          <li>
-            Auto-approve (opt-in): ≥{" "}
-            {Math.round(SHORTLIST_THRESHOLDS.autoApproveMin * 100)}%
-          </li>
-          <li>
-            Requires review: &lt;{" "}
-            {Math.round(SHORTLIST_THRESHOLDS.reviewBelow * 100)}%
-          </li>
-        </ul>
-        <p className="text-sm text-zinc-500">
-          Auto-approve only queues extension packages — it never clicks Submit
-          on job sites.
-        </p>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Volume caps</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm text-muted-foreground">
+          <div className="flex justify-between">
+            <span>Max drafts / day</span>
+            <span className="font-mono text-foreground">
+              {VOLUME_CAPS.maxDraftsPerDay}
+            </span>
+          </div>
+          <Separator />
+          <div className="flex justify-between">
+            <span>Max drafts / week</span>
+            <span className="font-mono text-foreground">
+              {VOLUME_CAPS.maxDraftsPerWeek}
+            </span>
+          </div>
+          <Separator />
+          <div className="flex justify-between">
+            <span>Free tier drafts / month</span>
+            <span className="font-mono text-foreground">
+              {VOLUME_CAPS.freeDraftsPerMonth}
+            </span>
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="card space-y-3 p-6">
-        <h2 className="text-lg font-medium">Chrome extension</h2>
-        <p className="text-sm text-zinc-400">
-          Load <code className="text-accent">apps/extension</code> via{" "}
-          <code className="text-accent">chrome://extensions</code> (Developer
-          mode → Load unpacked). Prefills forms; you submit.
-        </p>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Shortlist thresholds</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm text-muted-foreground">
+          <div className="flex justify-between">
+            <span>Auto-approve (opt-in)</span>
+            <span className="font-mono text-foreground">
+              ≥ {Math.round(SHORTLIST_THRESHOLDS.autoApproveMin * 100)}%
+            </span>
+          </div>
+          <Separator />
+          <div className="flex justify-between">
+            <span>Requires review</span>
+            <span className="font-mono text-foreground">
+              &lt; {Math.round(SHORTLIST_THRESHOLDS.reviewBelow * 100)}%
+            </span>
+          </div>
+          <p className="pt-2 text-xs">
+            Auto-approve only queues extension packages — it never clicks Submit
+            on job sites.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Chrome extension</CardTitle>
+          <CardDescription>
+            Load{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              apps/extension
+            </code>{" "}
+            via chrome://extensions (Developer mode → Load unpacked). Prefills
+            forms; you submit.
+          </CardDescription>
+        </CardHeader>
+      </Card>
     </div>
   );
 }
