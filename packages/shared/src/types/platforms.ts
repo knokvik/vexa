@@ -39,6 +39,8 @@ export interface PlatformConnection {
   status: PlatformConnectionStatus;
   /** When true, included in daily pre-apply sync. */
   syncEnabled: boolean;
+  /** How the account was linked */
+  authMode?: "oauth" | "demo";
   connectedAt?: string;
   lastSyncedAt?: string;
   nextSyncAt?: string;

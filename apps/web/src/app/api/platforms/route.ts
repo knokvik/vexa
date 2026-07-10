@@ -2,28 +2,27 @@ import { NextResponse } from "next/server";
 import { PLATFORM_CATALOG } from "@vexa/shared";
 import type { PlatformId } from "@vexa/shared";
 import { store } from "@/lib/store";
+import { listOAuthConfigStatus } from "@/lib/oauth/config";
 
 export async function GET() {
   return NextResponse.json({
     catalog: PLATFORM_CATALOG,
+    oauth: listOAuthConfigStatus(),
     ...store.getSyncStatus(),
   });
 }
 
 /**
- * Connect / disconnect / toggle daily sync.
- * Body: { action: "connect"|"disconnect"|"toggle_sync"|"set_sync_before_apply", platformId?, syncEnabled?, handle?, syncBeforeApply? }
+ * Connect (demo only if ALLOW_DEMO_OAUTH) / disconnect / toggle daily sync.
+ * Real connect uses GET /api/oauth/:provider/start
  */
 export async function POST(request: Request) {
   const body = await request.json();
   const action = body.action as string;
 
   if (action === "set_sync_before_apply") {
-    const enabled = Boolean(body.syncBeforeApply);
-    return NextResponse.json({
-      syncBeforeApply: store.setSyncBeforeApply(enabled),
-      ...store.getSyncStatus(),
-    });
+    store.setSyncBeforeApply(Boolean(body.syncBeforeApply));
+    return NextResponse.json(store.getSyncStatus());
   }
 
   const platformId = body.platformId as PlatformId;
@@ -32,6 +31,16 @@ export async function POST(request: Request) {
   }
 
   if (action === "connect") {
+    // Prefer telling client to use OAuth redirect
+    if (process.env.ALLOW_DEMO_OAUTH !== "true") {
+      return NextResponse.json(
+        {
+          error: "Use real OAuth",
+          oauthStartUrl: `/api/oauth/${platformId}/start`,
+        },
+        { status: 400 }
+      );
+    }
     const result = store.connectPlatform(platformId, {
       handle: body.handle,
       profileUrl: body.profileUrl,

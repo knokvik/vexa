@@ -26,6 +26,9 @@ import {
   buildSyncReport,
   isStale,
 } from "./platform-sync";
+import { deleteTokens, hasTokens } from "./oauth/token-store";
+import { isOAuthProvider } from "./oauth/config";
+import { fetchRealPlatformProfile } from "./oauth/fetch-profile";
 
 function defaultConnections(): PlatformConnection[] {
   return PLATFORM_CATALOG.map((p) => ({
@@ -91,25 +94,116 @@ class MemoryStore {
   }
 
   /**
-   * Demo connect — production would redirect to OAuth and store tokens securely.
+   * Complete real OAuth connection after callback stored tokens.
+   */
+  async connectWithOAuthTokens(
+    platformId: PlatformId,
+    tokens: { accessToken: string; refreshToken?: string; expiresAt?: string }
+  ): Promise<PlatformConnection | { error: string }> {
+    const conn = this.getPlatform(platformId);
+    if (!conn) return { error: "Unknown platform" };
+    if (!isOAuthProvider(platformId)) {
+      return { error: "Provider does not support OAuth" };
+    }
+
+    try {
+      const real = await fetchRealPlatformProfile(
+        platformId,
+        tokens.accessToken
+      );
+      const now = new Date().toISOString();
+
+      conn.status = "connected";
+      conn.authMode = "oauth";
+      conn.syncEnabled = true;
+      conn.connectedAt = now;
+      conn.lastSyncedAt = now;
+      conn.externalHandle = real.handle;
+      conn.externalProfileUrl = real.profileUrl;
+      conn.lastSyncSummary = real.fields;
+      conn.errorMessage = undefined;
+      conn.nextSyncAt = new Date(
+        Date.now() + PLATFORM_SYNC_MAX_AGE_HOURS * 60 * 60 * 1000
+      ).toISOString();
+
+      // Apply first profile pull
+      this.profile = {
+        ...this.profile,
+        ...real.profilePatch,
+        fullName: real.profilePatch.fullName || this.profile.fullName,
+        skills: [...this.profile.skills],
+        interests: [...this.profile.interests],
+      };
+      if (real.skillsToMerge) {
+        const existing = new Set(
+          this.profile.skills.map((s) => s.name.toLowerCase())
+        );
+        for (const name of real.skillsToMerge) {
+          if (!existing.has(name.toLowerCase())) {
+            this.profile.skills.push({
+              id: `oauth_${name.toLowerCase().replace(/\s+/g, "_")}`,
+              name,
+              proficiency: "intermediate",
+              category: "technical",
+            });
+          }
+        }
+      }
+      if (real.interestsToMerge) {
+        this.profile.interests = [
+          ...new Set([...this.profile.interests, ...real.interestsToMerge]),
+        ];
+      }
+
+      this.lastSyncReport = buildSyncReport(
+        [
+          {
+            platformId,
+            ok: true,
+            syncedAt: now,
+            fieldsUpdated: real.fields,
+          },
+        ],
+        "manual",
+        false
+      );
+
+      return { ...conn };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "OAuth profile fetch failed";
+      conn.status = "error";
+      conn.errorMessage = msg;
+      return { error: msg };
+    }
+  }
+
+  /**
+   * @deprecated Prefer real OAuth. Demo connect only when ALLOW_DEMO_OAUTH=true.
    */
   connectPlatform(
     platformId: PlatformId,
     opts?: { handle?: string; profileUrl?: string }
   ): PlatformConnection | { error: string } {
+    if (process.env.ALLOW_DEMO_OAUTH !== "true") {
+      if (isOAuthProvider(platformId)) {
+        return {
+          error:
+            "Use real OAuth Connect (or set ALLOW_DEMO_OAUTH=true for offline demo)",
+        };
+      }
+      return {
+        error:
+          "This platform has no public OAuth yet. Tracked for partner access.",
+      };
+    }
+
     const conn = this.getPlatform(platformId);
     if (!conn) return { error: "Unknown platform" };
-    const def = PLATFORM_CATALOG.find((p) => p.id === platformId);
     const now = new Date().toISOString();
-    const handle =
-      opts?.handle ??
-      (platformId === "github"
-        ? "alexrivera"
-        : platformId === "x"
-          ? "alexrivera"
-          : "alexrivera");
+    const handle = opts?.handle ?? "alexrivera";
 
     conn.status = "connected";
+    conn.authMode = "demo";
     conn.syncEnabled = true;
     conn.connectedAt = now;
     conn.externalHandle = handle;
@@ -127,21 +221,22 @@ class MemoryStore {
       Date.now() + PLATFORM_SYNC_MAX_AGE_HOURS * 60 * 60 * 1000
     ).toISOString();
 
-    // First connect triggers an immediate sync so profile is warm.
-    this.syncPlatforms({
+    // Fire-and-forget sync for demo
+    void this.syncPlatforms({
       force: true,
       only: [platformId],
       triggeredBy: "manual",
     });
 
-    void def;
     return { ...conn };
   }
 
   disconnectPlatform(platformId: PlatformId): PlatformConnection | { error: string } {
     const conn = this.getPlatform(platformId);
     if (!conn) return { error: "Unknown platform" };
+    deleteTokens(DEMO_USER_ID, platformId);
     conn.status = "disconnected";
+    conn.authMode = undefined;
     conn.syncEnabled = false;
     conn.connectedAt = undefined;
     conn.lastSyncedAt = undefined;
@@ -171,15 +266,11 @@ class MemoryStore {
     return this.syncBeforeApply;
   }
 
-  /**
-   * Sync all connected platforms with syncEnabled.
-   * Skips fresh ones unless force=true.
-   */
-  syncPlatforms(opts?: {
+  async syncPlatforms(opts?: {
     force?: boolean;
     only?: PlatformId[];
     triggeredBy?: SyncRunReport["triggeredBy"];
-  }): SyncRunReport {
+  }): Promise<SyncRunReport> {
     const triggeredBy = opts?.triggeredBy ?? "manual";
     const targets = this.platforms.filter((p) => {
       if (opts?.only && !opts.only.includes(p.platformId)) return false;
@@ -203,7 +294,7 @@ class MemoryStore {
     const results = [];
     for (const conn of targets) {
       conn.status = "syncing";
-      const { profile, result } = applyPlatformSync(this.profile, conn);
+      const { profile, result } = await applyPlatformSync(this.profile, conn);
       this.profile = profile;
       if (result.ok) {
         conn.status = "connected";
@@ -225,10 +316,9 @@ class MemoryStore {
     return report;
   }
 
-  /** Called before drafts / automation / apply packages. */
-  ensureFreshPlatformData(
+  async ensureFreshPlatformData(
     triggeredBy: SyncRunReport["triggeredBy"] = "pre_apply"
-  ): SyncRunReport {
+  ): Promise<SyncRunReport> {
     if (!this.syncBeforeApply) {
       return buildSyncReport([], triggeredBy, true, "Sync-before-apply is off");
     }
@@ -245,7 +335,10 @@ class MemoryStore {
       syncEnabledCount: this.platforms.filter((p) => p.syncEnabled).length,
       staleCount: stale.length,
       lastSyncReport: this.lastSyncReport,
-      platforms: this.platforms,
+      platforms: this.platforms.map((p) => ({
+        ...p,
+        hasServerTokens: hasTokens(DEMO_USER_ID, p.platformId),
+      })),
     };
   }
 
@@ -265,9 +358,10 @@ class MemoryStore {
     return { ok: true };
   }
 
-  prepareDraft(jobId: string): ApplicationDraft | { error: string } {
-    // Daily platform sync before any resume / apply package is built.
-    this.ensureFreshPlatformData("pre_apply");
+  async prepareDraft(
+    jobId: string
+  ): Promise<ApplicationDraft | { error: string }> {
+    await this.ensureFreshPlatformData("pre_apply");
 
     const cap = this.canCreateDraft();
     if (!cap.ok) return { error: cap.reason! };
@@ -363,9 +457,8 @@ class MemoryStore {
     return d;
   }
 
-  getApplyPackage(id: string): ApplyPackage | null {
-    // Ensure data is still fresh before packaging for the extension.
-    this.ensureFreshPlatformData("pre_apply");
+  async getApplyPackage(id: string): Promise<ApplyPackage | null> {
+    await this.ensureFreshPlatformData("pre_apply");
     const d = this.getDraft(id);
     if (!d) return null;
     const job = this.getJob(d.jobListingId);
@@ -387,13 +480,12 @@ class MemoryStore {
     return this.resumes;
   }
 
-  startAutomation() {
+  async startAutomation() {
     this.automationEnabled = true;
-    // Daily sync all enabled platforms first, then draft.
-    const sync = this.ensureFreshPlatformData("pre_automation");
+    const sync = await this.ensureFreshPlatformData("pre_automation");
     const results = [];
     for (const job of this.jobs.slice(0, VOLUME_CAPS.maxDraftsPerDay)) {
-      const r = this.prepareDraft(job.id);
+      const r = await this.prepareDraft(job.id);
       results.push(r);
     }
     return { enabled: true, results, sync };

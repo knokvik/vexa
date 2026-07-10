@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { store } from "@/lib/store";
 
 export async function POST() {
-  const { results, sync } = store.startAutomation();
+  const { results, sync } = await store.startAutomation();
   const prepared = results.filter((r) => !("error" in r)).length;
   const errors = results
     .filter((r): r is { error: string } => "error" in r)

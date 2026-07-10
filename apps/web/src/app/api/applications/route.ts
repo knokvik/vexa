@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   if (!jobId) {
     return NextResponse.json({ error: "jobId required" }, { status: 400 });
   }
-  const result = store.prepareDraft(jobId);
+  const result = await store.prepareDraft(jobId);
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }

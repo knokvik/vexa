@@ -3,7 +3,7 @@ import type { PlatformId } from "@vexa/shared";
 import { store } from "@/lib/store";
 
 /**
- * Manual or forced daily sync.
+ * Manual or forced daily sync (uses real OAuth tokens when present).
  * Body optional: { force?: boolean, only?: PlatformId[] }
  */
 export async function POST(request: Request) {
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     // empty body = force full sync
   }
 
-  const report = store.syncPlatforms({
+  const report = await store.syncPlatforms({
     force,
     only,
     triggeredBy: "manual",
