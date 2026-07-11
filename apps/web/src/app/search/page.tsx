@@ -1,7 +1,7 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { JobListing } from "@vexa/shared";
 import {
@@ -9,10 +9,11 @@ import {
   CheckCircle2,
   ExternalLink,
   Globe2,
-  Linkedin,
+  Link2,
   Loader2,
   Search,
   Sparkles,
+  XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,68 +41,80 @@ type TierState = {
   durationMs?: number;
 };
 
+type JobCard = JobListing & { tier?: TierId; appearKey?: string };
+
 const TIER_META: Array<Omit<TierState, "status" | "count">> = [
-  {
-    id: "company",
-    label: "Company career pages",
-    priority: 1,
-  },
-  {
-    id: "portal",
-    label: "Job portals (Greenhouse, Lever, Indeed…)",
-    priority: 2,
-  },
-  {
-    id: "linkedin",
-    label: "LinkedIn & protected boards",
-    priority: 3,
-  },
+  { id: "company", label: "Company career pages", priority: 1 },
+  { id: "portal", label: "Job portals", priority: 2 },
+  { id: "linkedin", label: "LinkedIn & protected", priority: 3 },
 ];
 
 function tierIcon(id: TierId) {
   if (id === "company") return Building2;
   if (id === "portal") return Globe2;
-  return Linkedin;
+  return Link2;
 }
 
 function SearchLiveInner() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const initialQ = searchParams.get("q") || "";
 
   const [query, setQuery] = useState(initialQ);
-  const [activeQuery, setActiveQuery] = useState(initialQ);
+  const [activeQuery, setActiveQuery] = useState("");
   const [tiers, setTiers] = useState<TierState[]>(() =>
     TIER_META.map((t) => ({ ...t, status: "pending" as const, count: 0 }))
   );
-  const [jobs, setJobs] = useState<
-    Array<JobListing & { tier?: TierId; appearKey?: string }>
-  >([]);
+  const [jobs, setJobs] = useState<JobCard[]>([]);
   const [running, setRunning] = useState(false);
   const [applyBusy, setApplyBusy] = useState(false);
   const [note, setNote] = useState("");
+  const [fatal, setFatal] = useState("");
 
-  const doneCount = tiers.filter((t) => t.status === "done" || t.status === "error")
-    .length;
-  const progress = (doneCount / tiers.length) * 100;
-  const allDone = !running && doneCount === tiers.length && activeQuery.length > 0;
+  const runIdRef = useRef(0);
+  const startedForQ = useRef<string | null>(null);
+
+  const doneCount = tiers.filter(
+    (t) => t.status === "done" || t.status === "error"
+  ).length;
+  const progress = activeQuery ? (doneCount / tiers.length) * 100 : 0;
+  const allDone =
+    !running && doneCount === tiers.length && activeQuery.length > 0;
 
   const runSearch = useCallback(async (q: string) => {
     const trimmed = q.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      setFatal("Enter a search query first.");
+      return;
+    }
 
+    const runId = ++runIdRef.current;
+    setFatal("");
+    setNote("");
     setActiveQuery(trimmed);
     setRunning(true);
-    setNote("");
     setJobs([]);
     setTiers(
-      TIER_META.map((t) => ({ ...t, status: "pending" as const, count: 0 }))
+      TIER_META.map((t) => ({
+        ...t,
+        status: "pending" as const,
+        count: 0,
+        error: undefined,
+        durationMs: undefined,
+      }))
     );
-    router.replace(`/search?q=${encodeURIComponent(trimmed)}`);
+
+    // Update URL without remounting / canceling React state
+    if (typeof window !== "undefined") {
+      const url = `/search?q=${encodeURIComponent(trimmed)}`;
+      window.history.replaceState(null, "", url);
+    }
 
     const seen = new Set<string>();
+    let total = 0;
 
     for (const meta of TIER_META) {
+      if (runId !== runIdRef.current) return; // cancelled by newer search
+
       setTiers((prev) =>
         prev.map((t) =>
           t.id === meta.id ? { ...t, status: "loading", error: undefined } : t
@@ -114,20 +127,31 @@ function SearchLiveInner() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ query: trimmed, tier: meta.id }),
         });
-        const data = await res.json();
-        const incoming = (data.jobs || []) as JobListing[];
 
-        // Progressive: append one-by-one for live feel
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`HTTP ${res.status}: ${text.slice(0, 120)}`);
+        }
+
+        const data = await res.json();
+        if (runId !== runIdRef.current) return;
+
+        const incoming = (data.jobs || []) as JobListing[];
+        let added = 0;
+
         for (const job of incoming) {
-          if (seen.has(job.externalUrl)) continue;
+          if (runId !== runIdRef.current) return;
+          if (!job.externalUrl || seen.has(job.externalUrl)) continue;
           seen.add(job.externalUrl);
-          const card = {
+          added += 1;
+          total += 1;
+          const card: JobCard = {
             ...job,
-            tier: meta.id as TierId,
-            appearKey: `${job.id}_${Date.now()}`,
+            tier: meta.id,
+            appearKey: `${job.id}_${total}`,
           };
           setJobs((prev) => [...prev, card]);
-          await new Promise((r) => setTimeout(r, 120));
+          await new Promise((r) => setTimeout(r, 80));
         }
 
         setTiers((prev) =>
@@ -135,8 +159,9 @@ function SearchLiveInner() {
             t.id === meta.id
               ? {
                   ...t,
-                  status: data.error && !incoming.length ? "error" : "done",
-                  count: incoming.length,
+                  status:
+                    data.error && added === 0 ? "error" : "done",
+                  count: added,
                   error: data.error,
                   durationMs: data.durationMs,
                 }
@@ -144,6 +169,7 @@ function SearchLiveInner() {
           )
         );
       } catch (e) {
+        if (runId !== runIdRef.current) return;
         setTiers((prev) =>
           prev.map((t) =>
             t.id === meta.id
@@ -159,16 +185,24 @@ function SearchLiveInner() {
       }
     }
 
-    setRunning(false);
-  }, [router]);
-
-  useEffect(() => {
-    if (initialQ.trim()) {
-      void runSearch(initialQ);
+    if (runId === runIdRef.current) {
+      setRunning(false);
+      if (total === 0) {
+        setNote(
+          "No solid job posts found (filtered out list/search pages). Try a more specific query like “Stripe frontend engineer”."
+        );
+      }
     }
-    // only on mount with initial q
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-start when landing with ?q=
+  useEffect(() => {
+    const q = initialQ.trim();
+    if (q && startedForQ.current !== q) {
+      startedForQ.current = q;
+      void runSearch(q);
+    }
+  }, [initialQ, runSearch]);
 
   async function applyAll() {
     if (!jobs.length) return;
@@ -176,7 +210,6 @@ function SearchLiveInner() {
     setNote("");
     let ok = 0;
     let fail = 0;
-    // Cap for quality / cost — prepare top 5 by priority order already in list
     const batch = jobs.slice(0, 5);
     for (const job of batch) {
       try {
@@ -186,7 +219,7 @@ function SearchLiveInner() {
           body: JSON.stringify({ jobId: job.id }),
         });
         const data = await res.json();
-        if (data.draft || data.error?.includes?.("Already")) ok += 1;
+        if (data.draft || String(data.error || "").includes("Already")) ok += 1;
         else fail += 1;
       } catch {
         fail += 1;
@@ -194,21 +227,12 @@ function SearchLiveInner() {
     }
     setApplyBusy(false);
     setNote(
-      `Apply-all queued ${ok} draft(s)${fail ? `, ${fail} skipped` : ""}. ATS/humanize ran on each. Open Draft Inbox — full auto-submit later.`
+      `Queued ${ok} draft(s)${fail ? `, ${fail} failed` : ""}. Open Draft Inbox for ATS scores.`
     );
   }
 
-  const sortedJobs = useMemo(() => {
-    const prio = { company: 0, portal: 1, linkedin: 2 } as const;
-    return [...jobs].sort(
-      (a, b) =>
-        (prio[a.tier || "portal"] ?? 9) - (prio[b.tier || "portal"] ?? 9)
-    );
-  }, [jobs]);
-
   return (
     <div className="space-y-6">
-      {/* Search bar */}
       <form
         className="flex flex-col gap-2 sm:flex-row"
         onSubmit={(e) => {
@@ -232,29 +256,38 @@ function SearchLiveInner() {
         </Button>
       </form>
 
-      {/* Top card: what we're searching */}
+      {fatal && (
+        <Alert variant="destructive">
+          <AlertDescription>{fatal}</AlertDescription>
+        </Alert>
+      )}
+
       {activeQuery && (
         <Card className="border-primary/20 bg-primary/5">
           <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-xs font-medium text-primary">
-                <Sparkles className="size-3.5" />
-                Live search
+                {running ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="size-3.5" />
+                )}
+                {running ? "Searching live…" : "Search complete"}
               </div>
               <p className="text-sm font-semibold tracking-tight">
                 “{activeQuery}”
               </p>
               <p className="text-xs text-muted-foreground">
-                Priority: company sites → job portals → LinkedIn. Cards appear
-                as each source finishes.
+                Priority: company sites → portals → LinkedIn. Real job posts
+                only (list pages filtered out).
               </p>
             </div>
-            <div className="flex min-w-[140px] flex-col gap-1.5">
+            <div className="flex min-w-[150px] flex-col gap-1.5">
               <div className="flex justify-between text-[11px] text-muted-foreground">
                 <span>
                   {doneCount}/{tiers.length} sources
                 </span>
-                <span>{sortedJobs.length} roles</span>
+                <span>{jobs.length} roles</span>
               </div>
               <Progress value={progress} className="h-1.5" />
             </div>
@@ -262,7 +295,6 @@ function SearchLiveInner() {
         </Card>
       )}
 
-      {/* Source status strip */}
       {activeQuery && (
         <div className="grid gap-2 sm:grid-cols-3">
           {tiers.map((t) => {
@@ -271,10 +303,9 @@ function SearchLiveInner() {
               <Card
                 key={t.id}
                 className={cn(
-                  "transition-colors",
                   t.status === "loading" && "border-primary/40",
                   t.status === "done" && "border-success/30",
-                  t.status === "error" && "border-destructive/30"
+                  t.status === "error" && "border-destructive/40"
                 )}
               >
                 <CardContent className="flex items-center gap-3 p-3">
@@ -288,18 +319,21 @@ function SearchLiveInner() {
                       <Loader2 className="size-4 animate-spin" />
                     ) : t.status === "done" ? (
                       <CheckCircle2 className="size-4 text-success" />
+                    ) : t.status === "error" ? (
+                      <XCircle className="size-4 text-destructive" />
                     ) : (
                       <Icon className="size-4 text-muted-foreground" />
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-medium">{t.label}</p>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="truncate text-[11px] text-muted-foreground">
                       {t.status === "pending" && "Waiting…"}
                       {t.status === "loading" && "Searching…"}
                       {t.status === "done" &&
                         `${t.count} found${t.durationMs ? ` · ${(t.durationMs / 1000).toFixed(1)}s` : ""}`}
-                      {t.status === "error" && (t.error?.slice(0, 48) || "Error")}
+                      {t.status === "error" &&
+                        (t.error?.slice(0, 60) || "Error")}
                     </p>
                   </div>
                   <Badge variant="secondary" className="font-mono text-[10px]">
@@ -312,20 +346,15 @@ function SearchLiveInner() {
         </div>
       )}
 
-      {/* Actions */}
-      {sortedJobs.length > 0 && (
+      {jobs.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <Button disabled={applyBusy || running} onClick={applyAll}>
             {applyBusy && <Loader2 className="animate-spin" />}
-            Apply all (top {Math.min(5, sortedJobs.length)})
+            Apply all (top {Math.min(5, jobs.length)})
           </Button>
           <Button variant="outline" asChild>
-            <Link href="/inbox">Open Draft Inbox</Link>
+            <Link href="/inbox">Draft Inbox</Link>
           </Button>
-          <span className="text-xs text-muted-foreground">
-            Apply-all prepares drafts + ATS/humanize. You still submit via
-            one-tap later.
-          </span>
         </div>
       )}
 
@@ -335,31 +364,26 @@ function SearchLiveInner() {
         </Alert>
       )}
 
-      {/* Skeleton loaders while first results pending */}
-      {running && sortedJobs.length === 0 && (
+      {running && jobs.length === 0 && (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <Card key={i} className="overflow-hidden">
+            <Card key={i}>
               <CardHeader className="space-y-2">
                 <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
                 <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-2">
                 <div className="h-3 w-full animate-pulse rounded bg-muted" />
-                <div className="mt-2 h-3 w-4/5 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-4/5 animate-pulse rounded bg-muted" />
               </CardContent>
             </Card>
           ))}
         </div>
       )}
 
-      {/* Progressive result cards */}
       <div className="space-y-3">
-        {sortedJobs.map((job) => (
-          <Card
-            key={job.appearKey || job.id}
-            className="animate-in fade-in slide-in-from-bottom-2 duration-300"
-          >
+        {jobs.map((job) => (
+          <Card key={job.appearKey || job.id}>
             <CardHeader className="flex flex-col gap-3 space-y-0 pb-2 sm:flex-row sm:items-start sm:justify-between">
               <div className="space-y-1.5">
                 <div className="flex flex-wrap items-center gap-2">
@@ -374,10 +398,10 @@ function SearchLiveInner() {
                     }
                   >
                     {job.tier === "company"
-                      ? "Company site"
+                      ? "Company"
                       : job.tier === "portal"
-                        ? "Job portal"
-                        : "LinkedIn / board"}
+                        ? "Portal"
+                        : "LinkedIn"}
                   </Badge>
                   <Badge variant="outline">{job.source}</Badge>
                   {job.location?.remote && (
@@ -397,22 +421,25 @@ function SearchLiveInner() {
                 </Button>
                 <Button
                   size="sm"
+                  disabled={applyBusy}
                   onClick={async () => {
                     setApplyBusy(true);
-                    const res = await fetch("/api/applications", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ jobId: job.id }),
-                    });
-                    const data = await res.json();
-                    setApplyBusy(false);
-                    setNote(
-                      data.error
-                        ? data.error
-                        : `Draft ready (${data.draft?.status}). Open Inbox for ATS scores.`
-                    );
+                    try {
+                      const res = await fetch("/api/applications", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ jobId: job.id }),
+                      });
+                      const data = await res.json();
+                      setNote(
+                        data.error
+                          ? String(data.error)
+                          : `Draft ready (${data.draft?.status}). Open Inbox.`
+                      );
+                    } finally {
+                      setApplyBusy(false);
+                    }
                   }}
-                  disabled={applyBusy}
                 >
                   Prepare
                 </Button>
@@ -420,8 +447,16 @@ function SearchLiveInner() {
             </CardHeader>
             <CardContent className="space-y-2">
               <p className="line-clamp-2 text-xs text-muted-foreground">
-                {job.description || "No description snippet."}
+                {job.description || "Open the link for full description."}
               </p>
+              <a
+                href={job.externalUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="block truncate text-[11px] text-primary hover:underline"
+              >
+                {job.externalUrl}
+              </a>
               {job.skillsRequired?.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {job.skillsRequired.slice(0, 6).map((s) => (
@@ -436,21 +471,23 @@ function SearchLiveInner() {
         ))}
       </div>
 
-      {allDone && sortedJobs.length === 0 && (
+      {allDone && jobs.length === 0 && (
         <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            No roles found for this query. Try broader keywords.
+          <CardContent className="space-y-2 py-10 text-center text-sm text-muted-foreground">
+            <p>No job posts passed quality filters.</p>
+            <p className="text-xs">
+              Try: “frontend engineer greenhouse” or a company name + role.
+            </p>
           </CardContent>
         </Card>
       )}
 
-      {!activeQuery && (
+      {!activeQuery && !running && (
         <Card>
           <CardContent className="space-y-2 py-10 text-center">
             <p className="text-sm font-medium">Search for roles</p>
             <p className="text-xs text-muted-foreground">
-              Results stream in by priority: company pages first, then portals,
-              then LinkedIn.
+              Type a query and hit Search live. Results stream by priority.
             </p>
           </CardContent>
         </Card>
