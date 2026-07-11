@@ -1,6 +1,7 @@
 /**
- * OpenRouter multi-model router (free pool + failover).
- * Keeps max_tokens low by default to save quota.
+ * OpenRouter multi-model router (free pool + failover + circuit breaker).
+ * Circuit breaker: after repeated free-tier failures, skip network briefly
+ * so draft pipeline stays fast on heuristics.
  */
 
 export type ChatMessage = {
@@ -11,11 +12,11 @@ export type ChatMessage = {
 export type OpenRouterChatOptions = {
   messages: ChatMessage[];
   model?: string;
-  /** Prefer short responses — default from env or 128 */
   maxTokens?: number;
   temperature?: number;
-  /** Role for model pool selection */
   role?: "default" | "humanize" | "parse" | "shortlist" | "rank";
+  /** Max models to try (default 2 when circuit half-open, 3 normal) */
+  maxAttempts?: number;
 };
 
 export type ChatResult = {
@@ -33,6 +34,39 @@ const DEFAULT_POOL = [
   "nousresearch/hermes-3-llama-3.1-405b:free",
 ];
 
+/** Process-local circuit breaker */
+const circuit = {
+  failures: 0,
+  openUntil: 0,
+};
+
+function circuitOpen(): boolean {
+  return Date.now() < circuit.openUntil;
+}
+
+function recordSuccess() {
+  circuit.failures = 0;
+  circuit.openUntil = 0;
+}
+
+function recordFailure() {
+  circuit.failures += 1;
+  // After 2 consecutive hard fails, cool down 3 minutes (free-tier storms)
+  if (circuit.failures >= 2) {
+    circuit.openUntil = Date.now() + 3 * 60 * 1000;
+  }
+}
+
+export function getLlmCircuitStatus() {
+  return {
+    open: circuitOpen(),
+    failures: circuit.failures,
+    openUntil: circuit.openUntil
+      ? new Date(circuit.openUntil).toISOString()
+      : null,
+  };
+}
+
 export function getOpenRouterConfig() {
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
   const primary =
@@ -41,7 +75,6 @@ export function getOpenRouterConfig() {
   const pool = poolRaw
     ? poolRaw.split(",").map((s) => s.trim()).filter(Boolean)
     : DEFAULT_POOL;
-  // Ensure primary is first
   const models = [primary, ...pool.filter((m) => m !== primary)];
   const referer =
     process.env.OPENROUTER_HTTP_REFERER?.trim() ||
@@ -66,11 +99,9 @@ function poolForRole(role: OpenRouterChatOptions["role"]): string[] {
   const cfg = getOpenRouterConfig();
   const all = cfg.models;
   if (role === "shortlist" || role === "rank") {
-    // Prefer reasoning / rank-friendly first when present
     const prefer = [
       "nvidia/llama-nemotron-rerank-vl-1b-v2:free",
       "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-      "nvidia/nemotron-3-ultra-550b-a55b:free",
     ];
     return [...prefer.filter((m) => all.includes(m)), ...all];
   }
@@ -84,13 +115,15 @@ async function callOnce(
   const cfg = getOpenRouterConfig();
   if (!cfg.apiKey) throw new Error("OPENROUTER_API_KEY is not set");
 
-  // Fast fail — free models often queue/rate-limit; don't hang the pipeline
+  const timeoutMs = Number(process.env.OPENROUTER_TIMEOUT_MS || "6000");
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 12_000);
+  const timer = setTimeout(
+    () => controller.abort(),
+    Number.isFinite(timeoutMs) ? timeoutMs : 6000
+  );
 
-  let res: Response;
   try {
-    res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${cfg.apiKey}`,
@@ -106,30 +139,28 @@ async function callOnce(
       }),
       signal: controller.signal,
     });
+
+    const body = (await res.json()) as {
+      error?: { message?: string; code?: number };
+      model?: string;
+      choices?: Array<{ message?: { content?: string } }>;
+      usage?: unknown;
+    };
+
+    if (!res.ok) {
+      throw new Error(body.error?.message || `OpenRouter HTTP ${res.status}`);
+    }
+
+    const text = body.choices?.[0]?.message?.content?.trim() || "";
+    if (!text) throw new Error("Empty model response");
+    return { text, model: body.model || model, usage: body.usage };
   } finally {
     clearTimeout(timer);
   }
-
-  const body = (await res.json()) as {
-    error?: { message?: string; code?: number };
-    model?: string;
-    choices?: Array<{ message?: { content?: string } }>;
-    usage?: unknown;
-  };
-
-  if (!res.ok) {
-    throw new Error(
-      body.error?.message || `OpenRouter HTTP ${res.status}`
-    );
-  }
-
-  const text = body.choices?.[0]?.message?.content?.trim() || "";
-  if (!text) throw new Error("Empty model response");
-  return { text, model: body.model || model, usage: body.usage };
 }
 
 /**
- * Chat with automatic free-model failover (429 / empty / error).
+ * Chat with free-model failover. Throws if circuit open or all attempts fail.
  */
 export async function openRouterChat(
   opts: OpenRouterChatOptions
@@ -137,12 +168,25 @@ export async function openRouterChat(
   const cfg = getOpenRouterConfig();
   if (!cfg.apiKey) throw new Error("OPENROUTER_API_KEY is not set");
 
+  if (process.env.VEXA_HEURISTIC_ONLY === "true") {
+    throw new Error("VEXA_HEURISTIC_ONLY=true");
+  }
+
+  if (circuitOpen()) {
+    throw new Error(
+      `LLM circuit open until ${new Date(circuit.openUntil).toISOString()}`
+    );
+  }
+
   const models = opts.model
     ? [opts.model, ...poolForRole(opts.role).filter((m) => m !== opts.model)]
     : poolForRole(opts.role);
 
-  // Cap attempts so free-tier rate-limits don't burn 60s+
-  const maxAttempts = Math.min(models.length, 3);
+  const envMax = Number(process.env.OPENROUTER_MAX_ATTEMPTS || "2");
+  const maxAttempts = Math.min(
+    models.length,
+    opts.maxAttempts ?? (Number.isFinite(envMax) ? envMax : 2)
+  );
   const attempts: ChatResult["attempts"] = [];
   let lastError = "All models failed";
 
@@ -150,27 +194,20 @@ export async function openRouterChat(
     try {
       const result = await callOnce(model, opts);
       attempts.push({ model, ok: true });
+      recordSuccess();
       return { ...result, attempts };
     } catch (e) {
       const msg =
         e instanceof Error
           ? e.name === "AbortError"
-            ? "timeout 12s"
+            ? "timeout 10s"
             : e.message
           : String(e);
       attempts.push({ model, ok: false, error: msg });
       lastError = msg;
-      // continue to next model
     }
   }
 
+  recordFailure();
   throw new Error(`${lastError} | attempts=${attempts.length}`);
-}
-
-/** Back-compat simple export used by health route */
-export async function openRouterChatSimple(
-  opts: OpenRouterChatOptions
-): Promise<{ text: string; model: string; usage?: unknown }> {
-  const r = await openRouterChat(opts);
-  return { text: r.text, model: r.model, usage: r.usage };
 }

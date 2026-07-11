@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { getOpenRouterConfig, openRouterChat } from "@/lib/openrouter";
+import {
+  getOpenRouterConfig,
+  getLlmCircuitStatus,
+  openRouterChat,
+} from "@/lib/openrouter";
 
 /**
  * Lightweight smoke test — tiny prompt, multi-model failover.
@@ -34,6 +38,7 @@ export async function GET() {
       usage: result.usage,
       attempts: result.attempts,
       pool: cfg.models,
+      circuit: getLlmCircuitStatus(),
     });
   } catch (e) {
     return NextResponse.json(
@@ -42,7 +47,9 @@ export async function GET() {
         provider: "openrouter",
         model: cfg.model,
         pool: cfg.models,
+        circuit: getLlmCircuitStatus(),
         error: e instanceof Error ? e.message : "LLM call failed",
+        note: "Draft pipeline still works via local heuristics when free models are rate-limited.",
       },
       { status: 502 }
     );

@@ -1,36 +1,43 @@
 /**
- * Low-token LLM helpers for humanize + short notes.
- * Falls back to local heuristics if all free models fail.
+ * Low-token LLM helpers. Always safe: heuristic fallback, circuit-aware.
  */
 
 import { humanizeText, estimateHumanizationScore } from "@vexa/intelligence";
-import { openRouterChat } from "./openrouter";
+import { getLlmCircuitStatus, openRouterChat } from "./openrouter";
 
-/** Light LLM rewrite — short prompt, capped tokens */
+/** Light LLM rewrite — never blocks the draft pipeline long. */
 export async function llmHumanize(
   text: string
-): Promise<{ text: string; score: number; model?: string; source: "llm" | "heuristic" }> {
+): Promise<{
+  text: string;
+  score: number;
+  model?: string;
+  source: "llm" | "heuristic";
+}> {
   const base = humanizeText(text);
 
-  // Skip LLM if already decent (saves tokens)
-  if (base.score >= 78 && !base.rewrote) {
+  // Already good enough — save tokens
+  if (base.score >= 75) {
     return { text: base.text, score: base.score, source: "heuristic" };
   }
 
-  // Only send a short slice to the model
-  const slice = text.slice(0, 600);
-
-  // Skip network LLM if disabled or to save quota during free-tier storms
   if (process.env.VEXA_HEURISTIC_ONLY === "true") {
     return { text: base.text, score: base.score, source: "heuristic" };
   }
 
+  // Circuit open (free-tier storm) — skip network
+  if (getLlmCircuitStatus().open) {
+    return { text: base.text, score: base.score, source: "heuristic" };
+  }
+
+  const slice = text.slice(0, 500);
+
   try {
     const result = await openRouterChat({
       role: "humanize",
-      maxTokens: 120,
-      temperature: 0.4,
-      // Prefer one fast free model first to avoid 5× timeouts
+      maxTokens: 100,
+      maxAttempts: 1, // one try only — fall back to heuristic fast
+      temperature: 0.35,
       model: process.env.OPENROUTER_MODEL?.trim(),
       messages: [
         {
@@ -43,11 +50,7 @@ export async function llmHumanize(
     });
 
     const rewritten =
-      text.length > 600
-        ? result.text + text.slice(600)
-        : result.text;
-
-    // Clean + score with local heuristics
+      text.length > 500 ? result.text + text.slice(500) : result.text;
     const cleaned = humanizeText(rewritten);
     const score = estimateHumanizationScore(cleaned.text).score;
     return {
@@ -61,21 +64,26 @@ export async function llmHumanize(
   }
 }
 
-/** Tiny LLM assist for shortlist blurb — optional, max 40 tokens */
+/** Tiny LLM note — skipped when circuit open or high shortlist. */
 export async function llmShortlistNote(
   jobTitle: string,
   company: string,
   probability: number
 ): Promise<string | undefined> {
+  if (probability >= 0.85) return undefined;
+  if (process.env.VEXA_HEURISTIC_ONLY === "true") return undefined;
+  if (getLlmCircuitStatus().open) return undefined;
+
   try {
     const result = await openRouterChat({
       role: "shortlist",
-      maxTokens: 40,
+      maxTokens: 30,
+      maxAttempts: 1,
       temperature: 0.2,
       messages: [
         {
           role: "user",
-          content: `One short sentence advice for applying to ${jobTitle} at ${company} (shortlist ~${Math.round(probability * 100)}%). Max 15 words.`,
+          content: `One short sentence (max 12 words) for applying to ${jobTitle} at ${company}.`,
         },
       ],
     });
