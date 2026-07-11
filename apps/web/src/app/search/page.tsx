@@ -32,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { JobIntelSheet } from "@/components/JobIntelSheet";
 
 type TierId = "company" | "portal" | "linkedin";
 
@@ -89,6 +90,8 @@ function SearchLiveInner() {
   /** Placeholder slots while waiting for first cards */
   const [skeletonCount, setSkeletonCount] = useState(0);
   const [view, setView] = useState<"grid" | "list">("grid");
+  const [intelJob, setIntelJob] = useState<JobListing | null>(null);
+  const [intelOpen, setIntelOpen] = useState(false);
 
   const runIdRef = useRef(0);
   const startedForQ = useRef<string | null>(null);
@@ -606,27 +609,12 @@ function SearchLiveInner() {
                 </Button>
                 <Button
                   size="sm"
-                  disabled={applyBusy}
-                  onClick={async () => {
-                    setApplyBusy(true);
-                    try {
-                      const res = await fetch("/api/applications", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ jobId: job.id }),
-                      });
-                      const data = await res.json();
-                      setNote(
-                        data.error
-                          ? String(data.error)
-                          : `Draft ready (${data.draft?.status}).`
-                      );
-                    } finally {
-                      setApplyBusy(false);
-                    }
+                  onClick={() => {
+                    setIntelJob(job);
+                    setIntelOpen(true);
                   }}
                 >
-                  Prepare
+                  Apply
                 </Button>
               </div>
             </CardContent>
@@ -672,11 +660,18 @@ function SearchLiveInner() {
           <CardContent className="space-y-2 py-10 text-center">
             <p className="text-sm font-medium">Search for roles</p>
             <p className="text-xs text-muted-foreground">
-              Live cards appear one-by-one. Top bar shows Firecrawl / Exa share.
+              Live cards appear one-by-one. Click Apply to scan the role,
+              people, and projects before drafting.
             </p>
           </CardContent>
         </Card>
       )}
+
+      <JobIntelSheet
+        open={intelOpen}
+        onOpenChange={setIntelOpen}
+        job={intelJob}
+      />
     </div>
   );
 }
