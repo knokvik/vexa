@@ -9,6 +9,7 @@ import {
   Inbox,
   Link2,
   Menu,
+  Search,
   Settings,
   UserRound,
 } from "lucide-react";
@@ -27,10 +28,11 @@ import { Separator } from "@/components/ui/separator";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: Home },
-  { href: "/onboarding", label: "Profile", icon: UserRound },
-  { href: "/connections", label: "Connections", icon: Link2 },
+  { href: "/search", label: "Search", icon: Search },
   { href: "/jobs", label: "Jobs", icon: Briefcase },
   { href: "/inbox", label: "Draft Inbox", icon: Inbox },
+  { href: "/onboarding", label: "Profile", icon: UserRound },
+  { href: "/connections", label: "Connections", icon: Link2 },
   { href: "/resumes", label: "Resumes", icon: FileText },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

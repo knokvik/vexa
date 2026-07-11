@@ -52,7 +52,7 @@ export default function DashboardPage() {
               <Link href="/onboarding">Edit profile</Link>
             </Button>
             <Button asChild>
-              <Link href="/jobs">Start pipeline</Link>
+              <Link href="/search">Live search</Link>
             </Button>
           </>
         }
