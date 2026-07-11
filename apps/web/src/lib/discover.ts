@@ -120,14 +120,31 @@ async function firecrawlSearch(
   return rows;
 }
 
+/**
+ * Exa is strongest for semantic “meaning” search.
+ * We use a precise natural-language query + text contents for ranking.
+ */
 async function exaSearch(
   query: string,
-  num = 5
+  num = 6,
+  mode: "semantic" | "strict" = "semantic"
 ): Promise<
-  Array<{ title?: string; url?: string; text?: string; publishedDate?: string }>
+  Array<{
+    title?: string;
+    url?: string;
+    text?: string;
+    publishedDate?: string;
+    score?: number;
+  }>
 > {
   const key = env("EXA_API_KEY");
   if (!key) throw new Error("EXA_API_KEY missing");
+
+  // Natural language beats keyword soup for Exa
+  const semanticQuery =
+    mode === "semantic"
+      ? `Open job postings for: ${query}. Prefer official career pages or ATS boards (Greenhouse, Lever, Ashby) with a single role, not job search indexes.`
+      : query;
 
   const res = await fetch("https://api.exa.ai/search", {
     method: "POST",
@@ -136,10 +153,11 @@ async function exaSearch(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      query,
+      query: semanticQuery,
       num_results: num,
       type: "auto",
-      contents: { text: { max_characters: 700 } },
+      use_autoprompt: true,
+      contents: { text: { max_characters: 900 } },
     }),
   });
 
@@ -154,9 +172,61 @@ async function exaSearch(
       url?: string;
       text?: string;
       publishedDate?: string;
+      score?: number;
     }>;
   };
   return data.results ?? [];
+}
+
+/** Score a candidate against the user query — backbone of “best results”. */
+function scoreAgainstQuery(
+  query: string,
+  job: {
+    title?: string;
+    company?: string;
+    url?: string;
+    text?: string;
+    source?: string;
+  }
+): number {
+  const q = query.toLowerCase();
+  const tokens = q
+    .split(/[^a-z0-9+#]+/i)
+    .filter((t) => t.length > 1 && !["and", "the", "for", "with", "job", "jobs", "role"].includes(t));
+  const hay = `${job.title || ""} ${job.company || ""} ${job.text || ""}`.toLowerCase();
+  const url = (job.url || "").toLowerCase();
+
+  let score = 0;
+  let hits = 0;
+  for (const t of tokens) {
+    if (hay.includes(t)) {
+      hits += 1;
+      // Title matches weigh more
+      if ((job.title || "").toLowerCase().includes(t)) score += 3;
+      else score += 1;
+    }
+  }
+  if (tokens.length) score += (hits / tokens.length) * 4;
+
+  // URL quality boosts
+  if (/greenhouse\.io\/.+\/jobs\/\d+/.test(url)) score += 5;
+  if (/lever\.co\/.+\/[a-f0-9-]{8,}/.test(url)) score += 5;
+  if (/ashbyhq\.com\/.+\/[a-f0-9-]{8,}/.test(url)) score += 5;
+  if (/\/careers\/[^/]+/.test(url)) score += 4;
+  if (/linkedin\.com\/jobs\/view\//.test(url)) score += 3;
+  if (/openai\.com|stripe\.com|uber\.com|adobe\.com|figma\.com|notion\.so/.test(url))
+    score += 2;
+
+  // Penalties
+  if (isJunkListing(job.title, job.url)) score -= 20;
+  if (/indeed\.com\/q-/.test(url)) score -= 15;
+  if ((job.text || "").length < 40) score -= 1;
+  if ((job.text || "").length > 200) score += 1;
+
+  // Exa semantic hits slightly preferred for company discovery
+  if (job.source === "exa") score += 0.5;
+
+  return score;
 }
 
 function toJob(
@@ -293,20 +363,22 @@ export async function discoverTier(
     company: {
       label: "Company career pages",
       priority: 1,
-      fcQ: `"${query}" (careers OR "job opening" OR "we're hiring") -site:linkedin.com -site:indeed.com -site:glassdoor.com`,
-      exaQ: `${query} official company careers page job application`,
+      // Firecrawl: keyword/web search strengths
+      fcQ: `${query} careers "apply" job -site:linkedin.com -site:indeed.com -site:glassdoor.com`,
+      // Exa: semantic — “find real open roles”
+      exaQ: query,
     },
     portal: {
       label: "Job portals",
       priority: 2,
-      fcQ: `${query} (site:boards.greenhouse.io OR site:jobs.lever.co OR site:jobs.ashbyhq.com OR site:wellfound.com/jobs)`,
-      exaQ: `${query} job greenhouse.io OR lever.co OR ashbyhq.com`,
+      fcQ: `${query} (site:boards.greenhouse.io OR site:jobs.lever.co OR site:jobs.ashbyhq.com)`,
+      exaQ: `${query} greenhouse OR lever OR ashby job posting`,
     },
     linkedin: {
       label: "LinkedIn & protected",
       priority: 3,
       fcQ: `${query} site:linkedin.com/jobs/view`,
-      exaQ: `${query} site:linkedin.com/jobs/view`,
+      exaQ: `${query} linkedin.com/jobs/view`,
     },
   };
 
@@ -319,12 +391,18 @@ export async function discoverTier(
     markdown?: string;
     text?: string;
     publishedDate?: string;
+    score?: number;
     _src: JobSource;
   }> = [];
 
+  // Backbone: search both, then rank — Exa semantic first for company tier
   const [fcResult, exResult] = await Promise.allSettled([
-    firecrawlSearch(m.fcQ, 5),
-    exaSearch(m.exaQ, 5),
+    firecrawlSearch(m.fcQ, tier === "linkedin" ? 4 : 6),
+    exaSearch(
+      m.exaQ,
+      tier === "linkedin" ? 4 : 6,
+      tier === "company" ? "semantic" : "strict"
+    ),
   ]);
 
   if (fcResult.status === "fulfilled") {
@@ -376,10 +454,24 @@ export async function discoverTier(
     raw = again.slice(0, 6);
   }
 
+  // Rank: go over raw results and keep the best matches for the query
+  const ranked = raw
+    .map((r) => ({
+      r,
+      score: scoreAgainstQuery(query, {
+        title: r.title,
+        url: r.url,
+        text: r.markdown || r.description || r.text,
+        source: r._src,
+      }),
+    }))
+    .filter((x) => x.score > 2) // drop weak matches
+    .sort((a, b) => b.score - a.score);
+
   const seen = new Set<string>();
   const jobs: JobListing[] = [];
   const providers = { firecrawl: 0, exa: 0 };
-  raw.forEach((r, i) => {
+  ranked.forEach(({ r }, i) => {
     const url = r.url!;
     if (seen.has(url)) return;
     seen.add(url);
@@ -388,15 +480,21 @@ export async function discoverTier(
     jobs.push(toJob(r, r._src, `${r._src}_${tier}`, i, query));
   });
 
+  // Cap per tier so UI stays sharp
+  const capped = jobs.slice(0, 8);
+
   return {
     tier,
     label: m.label,
     priority: m.priority,
-    jobs,
+    jobs: capped,
     rawCount,
-    providers,
+    providers: {
+      firecrawl: capped.filter((j) => j.source === "firecrawl").length,
+      exa: capped.filter((j) => j.source === "exa").length,
+    },
     durationMs: Date.now() - started,
-    error: errors.length && !jobs.length ? errors.join("; ") : undefined,
+    error: errors.length && !capped.length ? errors.join("; ") : undefined,
   };
 }
 

@@ -10,7 +10,9 @@ import {
   ExternalLink,
   Flame,
   Globe2,
+  LayoutGrid,
   Link2,
+  List,
   Loader2,
   Search,
   Sparkles,
@@ -86,6 +88,7 @@ function SearchLiveInner() {
   const [fatal, setFatal] = useState("");
   /** Placeholder slots while waiting for first cards */
   const [skeletonCount, setSkeletonCount] = useState(0);
+  const [view, setView] = useState<"grid" | "list">("grid");
 
   const runIdRef = useRef(0);
   const startedForQ = useRef<string | null>(null);
@@ -379,12 +382,9 @@ function SearchLiveInner() {
                       {p.label}
                     </div>
                     <span className="font-mono text-[11px] text-muted-foreground">
-                      {p.count}
-                      {totalResults > 0 && p.id !== "bright_data"
-                        ? ` · ${p.pct}%`
-                        : p.id === "bright_data"
-                          ? " · standby"
-                          : ""}
+                      {p.id === "bright_data"
+                        ? "off"
+                        : `${p.count}${totalResults > 0 ? ` · ${p.pct}%` : ""}`}
                     </span>
                   </div>
                   <div className="h-1.5 overflow-hidden rounded-full bg-muted">
@@ -409,10 +409,18 @@ function SearchLiveInner() {
                     />
                   </div>
                   <p className="mt-1 text-[10px] text-muted-foreground">
-                    {p.status === "loading" && "Fetching…"}
-                    {p.status === "done" && p.count > 0 && "Contributing"}
-                    {p.status === "done" && p.count === 0 && "No hits"}
-                    {p.status === "idle" && "Not used this pass"}
+                    {p.id === "bright_data" &&
+                      "Unlocker for hard pages — not needed for Exa/Firecrawl yet"}
+                    {p.id !== "bright_data" && p.status === "loading" && "Fetching…"}
+                    {p.id !== "bright_data" &&
+                      p.status === "done" &&
+                      p.count > 0 &&
+                      "Share of results"}
+                    {p.id !== "bright_data" &&
+                      p.status === "done" &&
+                      p.count === 0 &&
+                      "No hits"}
+                    {p.id !== "bright_data" && p.status === "idle" && "Idle"}
                   </p>
                 </div>
               ))}
@@ -457,15 +465,46 @@ function SearchLiveInner() {
         </Card>
       )}
 
-      {jobs.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <Button disabled={applyBusy || running} onClick={applyAll}>
-            {applyBusy && <Loader2 className="animate-spin" />}
-            Apply all (top {Math.min(5, jobs.length)})
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href="/inbox">Draft Inbox</Link>
-          </Button>
+      {(jobs.length > 0 || running) && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {jobs.length > 0 && (
+              <>
+                <Button disabled={applyBusy || running} onClick={applyAll}>
+                  {applyBusy && <Loader2 className="animate-spin" />}
+                  Apply all (top {Math.min(5, jobs.length)})
+                </Button>
+                <Button variant="outline" asChild>
+                  <Link href="/inbox">Draft Inbox</Link>
+                </Button>
+              </>
+            )}
+          </div>
+          {/* List / grid toggle */}
+          <div className="inline-flex items-center gap-0.5 rounded-lg border bg-card p-0.5 shadow-sm">
+            <Button
+              type="button"
+              size="sm"
+              variant={view === "grid" ? "default" : "ghost"}
+              className="h-7 px-2"
+              onClick={() => setView("grid")}
+              title="Grid view"
+            >
+              <LayoutGrid className="size-3.5" />
+              <span className="sr-only sm:not-sr-only sm:ml-1">Grid</span>
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={view === "list" ? "default" : "ghost"}
+              className="h-7 px-2"
+              onClick={() => setView("list")}
+              title="List view"
+            >
+              <List className="size-3.5" />
+              <span className="sr-only sm:not-sr-only sm:ml-1">List</span>
+            </Button>
+          </div>
         </div>
       )}
 
@@ -475,14 +514,29 @@ function SearchLiveInner() {
         </Alert>
       )}
 
-      {/* Square grid — loaders + results one by one */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Results: natural height, grid or list — appear one by one */}
+      <div
+        className={cn(
+          "gap-3",
+          view === "grid"
+            ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+            : "flex flex-col"
+        )}
+      >
         {jobs.map((job) => (
           <Card
             key={job.appearKey || job.id}
-            className="flex aspect-square flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-300"
+            className={cn(
+              "overflow-hidden animate-in fade-in slide-in-from-bottom-1 duration-300",
+              view === "list" && "flex flex-col sm:flex-row sm:items-stretch"
+            )}
           >
-            <CardHeader className="space-y-2 p-4 pb-2">
+            <CardHeader
+              className={cn(
+                "space-y-2 p-4 pb-2",
+                view === "list" && "sm:w-[40%] sm:shrink-0 sm:pb-4"
+              )}
+            >
               <div className="flex flex-wrap items-center gap-1.5">
                 <Badge
                   variant={
@@ -516,28 +570,42 @@ function SearchLiveInner() {
                 {job.company}
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-1 flex-col justify-between gap-3 p-4 pt-0">
-              <p className="line-clamp-4 text-[11px] leading-relaxed text-muted-foreground">
+            <CardContent
+              className={cn(
+                "flex flex-col gap-3 p-4 pt-0",
+                view === "list" && "sm:flex-1 sm:justify-between sm:pt-4"
+              )}
+            >
+              <p
+                className={cn(
+                  "text-[11px] leading-relaxed text-muted-foreground",
+                  view === "grid" ? "line-clamp-3" : "line-clamp-2"
+                )}
+              >
                 {job.description || "Open for full description."}
               </p>
               {job.skillsRequired?.length > 0 && (
                 <div className="flex flex-wrap gap-1">
-                  {job.skillsRequired.slice(0, 4).map((s) => (
+                  {job.skillsRequired.slice(0, 5).map((s) => (
                     <Badge key={s} variant="outline" className="text-[9px]">
                       {s}
                     </Badge>
                   ))}
                 </div>
               )}
-              <div className="mt-auto flex gap-2">
-                <Button variant="outline" size="sm" className="flex-1" asChild>
+              <div
+                className={cn(
+                  "flex gap-2",
+                  view === "list" && "sm:justify-end"
+                )}
+              >
+                <Button variant="outline" size="sm" asChild>
                   <a href={job.externalUrl} target="_blank" rel="noreferrer">
                     Open <ExternalLink className="size-3" />
                   </a>
                 </Button>
                 <Button
                   size="sm"
-                  className="flex-1"
                   disabled={applyBusy}
                   onClick={async () => {
                     setApplyBusy(true);
@@ -565,24 +633,23 @@ function SearchLiveInner() {
           </Card>
         ))}
 
-        {/* Loading square placeholders while search runs */}
+        {/* Compact loading placeholders (not forced square) */}
         {showSkeletons &&
-          Array.from({ length: Math.max(skeletonCount, running ? 3 : 0) }).map(
+          Array.from({ length: Math.max(skeletonCount, running ? 2 : 0) }).map(
             (_, i) => (
-              <Card
-                key={`sk-${i}`}
-                className="flex aspect-square flex-col overflow-hidden"
-              >
-                <CardContent className="flex flex-1 flex-col items-center justify-center gap-3 p-6">
-                  <Loader2 className="size-6 animate-spin text-primary" />
-                  <p className="text-center text-xs text-muted-foreground">
-                    {running
-                      ? tiers.find((t) => t.status === "loading")?.label ||
-                        "Searching…"
-                      : "Loading…"}
-                  </p>
-                  <div className="h-1.5 w-2/3 animate-pulse rounded-full bg-muted" />
-                  <div className="h-1.5 w-1/2 animate-pulse rounded-full bg-muted" />
+              <Card key={`sk-${i}`} className="overflow-hidden">
+                <CardContent className="flex items-center gap-3 p-4">
+                  <Loader2 className="size-5 shrink-0 animate-spin text-primary" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      {running
+                        ? tiers.find((t) => t.status === "loading")?.label ||
+                          "Searching…"
+                        : "Loading…"}
+                    </p>
+                    <div className="h-1.5 w-3/4 animate-pulse rounded-full bg-muted" />
+                    <div className="h-1.5 w-1/2 animate-pulse rounded-full bg-muted" />
+                  </div>
                 </CardContent>
               </Card>
             )
