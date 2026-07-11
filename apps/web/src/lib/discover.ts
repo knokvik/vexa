@@ -49,6 +49,9 @@ function isJunkListing(title?: string, url?: string): boolean {
   }
   if (/builtin\w*\.com\/jobs\/dev-engineering\/?$/.test(u)) return true;
   if (/startup\.jobs\/roles\//.test(u)) return true;
+  if (/dice\.com\/jobs\/q-/.test(u)) return true;
+  if (/dice\.com\/jobs\?/.test(u)) return true;
+  if (/\/jobs\/q-/.test(u)) return true;
 
   return false;
 }
