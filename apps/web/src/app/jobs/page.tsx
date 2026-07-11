@@ -62,6 +62,26 @@ export default function JobsPage() {
     );
   }
 
+  async function discoverLive() {
+    setRunning(true);
+    setNote("");
+    const res = await fetch("/api/jobs/discover", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: "senior frontend engineer remote" }),
+    });
+    const data = await res.json();
+    setRunning(false);
+    if (!data.ok) {
+      setNote(`Discover failed: ${data.error || "unknown"}`);
+      return;
+    }
+    setNote(
+      `Discovered ${data.count} jobs (task ${data.taskId?.slice(0, 8)}…). Sources: ${JSON.stringify(data.sources)}`
+    );
+    await load();
+  }
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -69,10 +89,16 @@ export default function JobsPage() {
         title="Matched roles"
         description="MVP uses demo + ingest adapters. Production: Firecrawl → Exa → Bright Data for public listings only."
         actions={
-          <Button disabled={running} onClick={startAutomation}>
-            {running && <Loader2 className="animate-spin" />}
-            {running ? "Running…" : "Start automation"}
-          </Button>
+          <>
+            <Button variant="outline" disabled={running} onClick={discoverLive}>
+              {running && <Loader2 className="animate-spin" />}
+              Discover (Firecrawl+Exa)
+            </Button>
+            <Button disabled={running} onClick={startAutomation}>
+              {running && <Loader2 className="animate-spin" />}
+              {running ? "Running…" : "Start automation"}
+            </Button>
+          </>
         }
       />
 

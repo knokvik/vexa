@@ -32,6 +32,9 @@ coverage
 apps/extension/dist
 
 # local data
+data/
+apps/web/data/
+memory/
 data/*.db
 data/*.sqlite
 *.sqlite

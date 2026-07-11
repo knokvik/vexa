@@ -29,6 +29,8 @@ import {
 import { deleteTokens, hasTokens } from "./oauth/token-store";
 import { isOAuthProvider } from "./oauth/config";
 import { fetchRealPlatformProfile } from "./oauth/fetch-profile";
+import { createTask, runStep, completeTask } from "./task-memory";
+import { llmHumanize, llmShortlistNote } from "./llm-pipeline";
 
 function defaultConnections(): PlatformConnection[] {
   return PLATFORM_CATALOG.map((p) => ({
@@ -360,7 +362,7 @@ class MemoryStore {
 
   async prepareDraft(
     jobId: string
-  ): Promise<ApplicationDraft | { error: string }> {
+  ): Promise<ApplicationDraft | { error: string; taskId?: string }> {
     await this.ensureFreshPlatformData("pre_apply");
 
     const cap = this.canCreateDraft();
@@ -378,55 +380,101 @@ class MemoryStore {
       return { ...existing, status: "duplicate", errorMessage: "Already drafted" };
     }
 
-    const built = buildTailoredResume(this.profile, job);
-    const now = new Date().toISOString();
-    const resumeId = `rv_${Date.now()}`;
+    // Task memory: if free models switch mid-run, completed steps are reused.
+    const task = await createTask(
+      "prepare_draft",
+      ["tailor", "humanize", "package"],
+      { jobId, company: job.company, title: job.title }
+    );
 
-    const resume: ResumeVersion = {
-      id: resumeId,
-      userId: DEMO_USER_ID,
-      jobListingId: jobId,
-      templateId: built.templateId,
-      content: built.content,
-      plainText: built.plainText,
-      atsScore: built.atsScore,
-      humanizedScore: built.humanizedScore,
-      createdAt: now,
-    };
-    this.resumes.unshift(resume);
+    try {
+      const built = await runStep(task, "tailor", async () => ({
+        output: buildTailoredResume(this.profile, job),
+        notes: "local tailor+ATS+shortlist",
+      }));
 
-    const status =
-      built.shortlistProbability < SHORTLIST_THRESHOLDS.reviewBelow
-        ? "requires_review"
-        : "ready";
+      const human = await runStep(task, "humanize", async () => {
+        const h = await llmHumanize(built.plainText);
+        return {
+          output: h,
+          modelUsed: h.model,
+          notes: `source=${h.source}`,
+        };
+      });
 
-    const draft: ApplicationDraft = {
-      id: `app_${Date.now()}`,
-      userId: DEMO_USER_ID,
-      jobListingId: jobId,
-      resumeVersionId: resumeId,
-      coverLetter: `Hi ${job.company} team — I'm excited about the ${job.title} role. ${built.recommendation}`,
-      status,
-      matchScore: built.atsScore,
-      shortlistProbability: built.shortlistProbability,
-      shortlistFactors: built.shortlistFactors,
-      filledFormData: {
-        name: this.profile.fullName,
-        email: "alex@example.com",
-        phone: this.profile.phone ?? "",
-        linkedin: this.profile.linkedinUrl ?? "",
-        github: this.profile.githubUrl ?? "",
-        location: this.profile.location ?? "",
-        resume_text: built.plainText.slice(0, 4000),
-        cover_letter: "",
-      },
-      retryCount: 0,
-      createdAt: now,
-      updatedAt: now,
-    };
-    draft.filledFormData!.cover_letter = draft.coverLetter ?? "";
-    this.drafts.unshift(draft);
-    return draft;
+      const plainText = human.text;
+      const humanizedScore = human.score;
+
+      // Optional tiny shortlist note — skip if shortlist already high to save tokens
+      let recommendation = built.recommendation;
+      if (built.shortlistProbability < 0.85) {
+        const note = await llmShortlistNote(
+          job.title,
+          job.company,
+          built.shortlistProbability
+        );
+        if (note) recommendation = note;
+      }
+
+      const draft = await runStep(task, "package", async () => {
+        const now = new Date().toISOString();
+        const resumeId = `rv_${Date.now()}`;
+        const resume: ResumeVersion = {
+          id: resumeId,
+          userId: DEMO_USER_ID,
+          jobListingId: jobId,
+          templateId: built.templateId,
+          content: built.content,
+          plainText,
+          atsScore: built.atsScore,
+          humanizedScore,
+          createdAt: now,
+        };
+        this.resumes.unshift(resume);
+
+        const status =
+          built.shortlistProbability < SHORTLIST_THRESHOLDS.reviewBelow
+            ? "requires_review"
+            : "ready";
+
+        const d: ApplicationDraft = {
+          id: `app_${Date.now()}`,
+          userId: DEMO_USER_ID,
+          jobListingId: jobId,
+          resumeVersionId: resumeId,
+          coverLetter: `Hi ${job.company} team — ${recommendation}`,
+          status,
+          matchScore: built.atsScore,
+          shortlistProbability: built.shortlistProbability,
+          shortlistFactors: built.shortlistFactors,
+          filledFormData: {
+            name: this.profile.fullName,
+            email: "alex@example.com",
+            phone: this.profile.phone ?? "",
+            linkedin: this.profile.linkedinUrl ?? "",
+            github: this.profile.githubUrl ?? "",
+            location: this.profile.location ?? "",
+            resume_text: plainText.slice(0, 4000),
+            cover_letter: "",
+          },
+          retryCount: 0,
+          createdAt: now,
+          updatedAt: now,
+        };
+        d.filledFormData!.cover_letter = d.coverLetter ?? "";
+        this.drafts.unshift(d);
+        return { output: d, notes: `task=${task.id}` };
+      });
+
+      await completeTask(task, "done");
+      return draft;
+    } catch (e) {
+      await completeTask(task, "failed");
+      return {
+        error: e instanceof Error ? e.message : "prepareDraft failed",
+        taskId: task.id,
+      };
+    }
   }
 
   listDrafts() {

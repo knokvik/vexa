@@ -106,14 +106,39 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Chrome extension</CardTitle>
+          <CardTitle>Chrome “one-tap” (simple explanation)</CardTitle>
+          <CardDescription className="space-y-2">
+            <p>
+              Vexa does <strong>not</strong> auto-submit applications from the
+              server. That would get accounts banned.
+            </p>
+            <p>
+              <strong>What happens:</strong> you click Apply in Draft Inbox → the
+              job page opens → the Chrome extension fills the form + resume fields
+              for you → <strong>you</strong> click Submit once.
+            </p>
+            <p>
+              Install: chrome://extensions → Developer mode → Load unpacked →
+              select{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                apps/extension
+              </code>
+              . Point it at http://127.0.0.1:5173.
+            </p>
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Single-user mode</CardTitle>
           <CardDescription>
-            Load{" "}
+            This build is internal-only (one operator). No multi-tenant auth or
+            Postgres required yet. Task memory is on disk under{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-xs">
-              apps/extension
-            </code>{" "}
-            via chrome://extensions (Developer mode → Load unpacked). Prefills
-            forms; you submit.
+              apps/web/data/tasks
+            </code>
+            .
           </CardDescription>
         </CardHeader>
       </Card>
