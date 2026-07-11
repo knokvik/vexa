@@ -43,7 +43,7 @@ export async function llmHumanize(
         {
           role: "system",
           content:
-            "Rewrite resume text to sound natural and human. No buzzwords. Keep facts. Output ONLY the rewritten text.",
+            "You are an expert resume writer and ATS specialist. Rewrite text to sound natural and human. No buzzwords. Do NOT invent achievements, employers, degrees, or metrics. Only rephrase existing facts. Output ONLY the rewritten text.",
         },
         { role: "user", content: slice },
       ],

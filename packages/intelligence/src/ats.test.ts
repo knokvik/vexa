@@ -20,5 +20,7 @@ describe("ats", () => {
       }
     );
     assert.ok(high.overallScore > low.overallScore);
+    assert.ok(typeof high.structuredScore === "number");
+    assert.ok(high.explain?.thresholdGood === 70);
   });
 });

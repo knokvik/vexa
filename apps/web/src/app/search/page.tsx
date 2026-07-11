@@ -33,6 +33,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { JobIntelSheet } from "@/components/JobIntelSheet";
+import { reportActivity } from "@/lib/activity-bus";
 
 type TierId = "company" | "portal" | "linkedin";
 
@@ -54,7 +55,27 @@ type ProviderStat = {
   status: "idle" | "loading" | "done";
 };
 
-type JobCard = JobListing & { tier?: TierId; appearKey?: string };
+type JobMatch = {
+  percent: number;
+  shortlist: number;
+  priority: string;
+  priorityLabel: string;
+  suggestion: string;
+  matchedSkills: string[];
+  missingSkills: string[];
+  ats?: {
+    overall: number;
+    keyword: number;
+    semantic: number;
+    structured: number;
+  };
+};
+
+type JobCard = JobListing & {
+  tier?: TierId;
+  appearKey?: string;
+  match?: JobMatch;
+};
 
 const TIER_META: Array<Omit<TierState, "status" | "count">> = [
   { id: "company", label: "Company sites", priority: 1 },
@@ -167,6 +188,12 @@ function SearchLiveInner() {
       );
 
       try {
+        reportActivity({
+          tool: "Exa + Firecrawl",
+          action: `Searching ${meta.label}`,
+          status: "running",
+        });
+
         const res = await fetch("/api/jobs/discover/tier", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -181,7 +208,7 @@ function SearchLiveInner() {
         const data = await res.json();
         if (runId !== runIdRef.current) return;
 
-        const incoming = (data.jobs || []) as JobListing[];
+        const incoming = (data.jobs || []) as JobCard[];
         const pv = data.providers || { firecrawl: 0, exa: 0 };
         fcTotal += Number(pv.firecrawl || 0);
         exTotal += Number(pv.exa || 0);
@@ -196,6 +223,13 @@ function SearchLiveInner() {
           })
         );
 
+        reportActivity({
+          tool: "ATS hybrid scorer",
+          action: `Scoring ${incoming.length} roles (keyword+semantic+structured)`,
+          model: "local-ats-v2",
+          status: "running",
+        });
+
         let added = 0;
         for (const job of incoming) {
           if (runId !== runIdRef.current) return;
@@ -209,10 +243,21 @@ function SearchLiveInner() {
             tier: meta.id,
             appearKey: `${job.id}_${total}`,
           };
-          setJobs((prev) => [...prev, card]);
-          // one-by-one pop-in
+          setJobs((prev) => {
+            const next = [...prev, card];
+            // keep overall list sorted by match %
+            return next.sort(
+              (a, b) => (b.match?.percent ?? 0) - (a.match?.percent ?? 0)
+            );
+          });
           await new Promise((r) => setTimeout(r, 140));
         }
+
+        reportActivity({
+          tool: "Exa + Firecrawl",
+          action: `${meta.label}: ${added} ranked results`,
+          status: "done",
+        });
 
         setTiers((prev) =>
           prev.map((t) =>
@@ -572,6 +617,52 @@ function SearchLiveInner() {
               <CardDescription className="truncate text-xs">
                 {job.company}
               </CardDescription>
+              {/* Match rate + priority suggestion */}
+              {job.match && (
+                <div className="mt-1 flex items-start gap-2 rounded-lg border bg-muted/40 p-2">
+                  <div className="min-w-[3.25rem] text-center">
+                    <div
+                      className={cn(
+                        "font-mono text-lg font-semibold tabular-nums leading-none",
+                        job.match.percent >= 70
+                          ? "text-success"
+                          : job.match.percent >= 55
+                            ? "text-primary"
+                            : "text-warning"
+                      )}
+                    >
+                      {job.match.percent}%
+                    </div>
+                    <div className="mt-0.5 text-[9px] uppercase tracking-wide text-muted-foreground">
+                      match
+                    </div>
+                  </div>
+                  <div className="min-w-0 flex-1 border-l pl-2">
+                    <Badge
+                      variant={
+                        job.match.priority === "apply_first" ||
+                        job.match.priority === "strong"
+                          ? "success"
+                          : job.match.priority === "skip"
+                            ? "outline"
+                            : "secondary"
+                      }
+                      className="mb-1 text-[9px]"
+                    >
+                      {job.match.priorityLabel}
+                    </Badge>
+                    <p className="text-[10px] leading-snug text-muted-foreground">
+                      {job.match.suggestion}
+                    </p>
+                    {job.match.ats && (
+                      <p className="mt-1 font-mono text-[9px] text-muted-foreground">
+                        ATS k{job.match.ats.keyword}·s{job.match.ats.semantic}
+                        ·x{job.match.ats.structured}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </CardHeader>
             <CardContent
               className={cn(
@@ -610,6 +701,11 @@ function SearchLiveInner() {
                 <Button
                   size="sm"
                   onClick={() => {
+                    reportActivity({
+                      tool: "Exa + Firecrawl",
+                      action: `Intel scan: ${job.company} · ${job.title}`,
+                      status: "running",
+                    });
                     setIntelJob(job);
                     setIntelOpen(true);
                   }}
