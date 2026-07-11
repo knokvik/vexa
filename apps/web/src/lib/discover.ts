@@ -16,6 +16,8 @@ export type TierResult = {
   error?: string;
   durationMs: number;
   rawCount?: number;
+  /** Per-provider counts after quality filter */
+  providers: { firecrawl: number; exa: number };
 };
 
 function env(name: string): string {
@@ -376,10 +378,13 @@ export async function discoverTier(
 
   const seen = new Set<string>();
   const jobs: JobListing[] = [];
+  const providers = { firecrawl: 0, exa: 0 };
   raw.forEach((r, i) => {
     const url = r.url!;
     if (seen.has(url)) return;
     seen.add(url);
+    if (r._src === "firecrawl") providers.firecrawl += 1;
+    if (r._src === "exa") providers.exa += 1;
     jobs.push(toJob(r, r._src, `${r._src}_${tier}`, i, query));
   });
 
@@ -389,6 +394,7 @@ export async function discoverTier(
     priority: m.priority,
     jobs,
     rawCount,
+    providers,
     durationMs: Date.now() - started,
     error: errors.length && !jobs.length ? errors.join("; ") : undefined,
   };
