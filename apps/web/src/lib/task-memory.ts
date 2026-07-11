@@ -175,3 +175,47 @@ export async function listRecentTasks(limit = 20): Promise<TaskRecord[]> {
     return [];
   }
 }
+
+/** Obsidian-style markdown preview for a task */
+export function taskToMarkdown(task: TaskRecord): string {
+  return [
+    `# ${task.type}`,
+    ``,
+    `- **id:** \`${task.id}\``,
+    `- **status:** ${task.status}`,
+    `- **created:** ${task.createdAt}`,
+    `- **updated:** ${task.updatedAt}`,
+    task.meta ? `- **meta:** \`${JSON.stringify(task.meta)}\`` : "",
+    ``,
+    `## Steps`,
+    ...task.steps.map(
+      (s) =>
+        `- [${s.status === "done" ? "x" : " "}] **${s.name}** — ${s.status}${s.modelUsed ? ` · \`${s.modelUsed}\`` : ""}${s.error ? ` · ⚠️ ${s.error}` : ""}${s.notes ? ` · _${s.notes}_` : ""}`
+    ),
+    ``,
+    `## Memory notes`,
+    ...(task.memoryNotes.length
+      ? task.memoryNotes.map((n) => `- ${n}`)
+      : ["- _(empty)_"]),
+    ``,
+    `---`,
+    `*Vexa task memory · path: data/tasks/${task.id}.json*`,
+    ``,
+  ]
+    .filter((l) => l !== undefined)
+    .join("\n");
+}
+
+export async function loadTaskMarkdown(id: string): Promise<string | null> {
+  const task = await loadTask(id);
+  if (!task) return null;
+  // Prefer written .md if present
+  try {
+    const mdPath = path.join(MEMORY_DIR, `${id}.md`);
+    const raw = await fs.readFile(mdPath, "utf8");
+    if (raw.trim()) return raw;
+  } catch {
+    /* fall through */
+  }
+  return taskToMarkdown(task);
+}

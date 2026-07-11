@@ -17,6 +17,7 @@ import { APP_NAME, APP_TAGLINE } from "@vexa/shared";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/mode-toggle";
+import { MemoryVaultButton } from "@/components/MemoryVaultButton";
 import {
   Sheet,
   SheetContent,
@@ -127,6 +128,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <NavLinks pathname={pathname} />
 
           <div className="flex items-center gap-2">
+            <MemoryVaultButton />
             <ModeToggle />
             <Button asChild size="sm">
               <Link href="/inbox">Ready to apply</Link>
