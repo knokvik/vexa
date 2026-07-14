@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -8,16 +9,21 @@ import {
   Home,
   Inbox,
   Link2,
+  Mail,
   Menu,
   Search,
   Settings,
   UserRound,
 } from "lucide-react";
-import { APP_NAME, APP_TAGLINE } from "@vexa/shared";
+import { APP_NAME } from "@vexa/shared";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/mode-toggle";
 import { MemoryVaultButton } from "@/components/MemoryVaultButton";
+import { VexaLogo } from "@/components/VexaLogo";
+import { ModelStatusBadge } from "@/components/ModelStatusBadge";
+import { AutomateDialog } from "@/components/AutomateDialog";
+import { SearchProvider, useSearchDialog } from "@/components/SearchProvider";
 import {
   Sheet,
   SheetContent,
@@ -27,53 +33,179 @@ import {
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 
-const NAV = [
-  { href: "/", label: "Dashboard", icon: Home },
-  { href: "/search", label: "Search", icon: Search },
-  { href: "/jobs", label: "Jobs", icon: Briefcase },
-  { href: "/inbox", label: "Draft Inbox", icon: Inbox },
-  { href: "/onboarding", label: "Profile", icon: UserRound },
-  { href: "/connections", label: "Connections", icon: Link2 },
-  { href: "/resumes", label: "Resumes", icon: FileText },
-  { href: "/settings", label: "Settings", icon: Settings },
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof Home;
+  badgeKey: string | null;
+  /** Opens search dialog instead of navigating */
+  searchDialog?: boolean;
+};
+
+const NAV: NavItem[] = [
+  { href: "/", label: "Home", icon: Home, badgeKey: null },
+  { href: "/jobs", label: "Jobs", icon: Briefcase, badgeKey: null },
+  {
+    href: "#search",
+    label: "Search",
+    icon: Search,
+    badgeKey: null,
+    searchDialog: true,
+  },
+  { href: "/inbox", label: "Inbox", icon: Inbox, badgeKey: "inbox" },
+  { href: "/outreach", label: "Outreach", icon: Mail, badgeKey: "outreach" },
+  { href: "/onboarding", label: "Profile", icon: UserRound, badgeKey: null },
+  { href: "/connections", label: "Connect", icon: Link2, badgeKey: null },
+  { href: "/resumes", label: "Resumes", icon: FileText, badgeKey: null },
+  { href: "/settings", label: "Settings", icon: Settings, badgeKey: null },
 ];
+
+function isActive(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
+  if (href.startsWith("#")) return false;
+  return pathname.startsWith(href);
+}
 
 function NavLinks({
   pathname,
   onNavigate,
   vertical,
+  badges,
 }: {
   pathname: string;
   onNavigate?: () => void;
   vertical?: boolean;
+  badges: Record<string, number>;
 }) {
+  const { openSearch } = useSearchDialog();
+
+  if (vertical) {
+    return (
+      <nav className="flex flex-col gap-1">
+        {NAV.map((item) => {
+          const active = isActive(pathname, item.href);
+          const Icon = item.icon;
+          const count =
+            item.badgeKey && badges[item.badgeKey]
+              ? badges[item.badgeKey]
+              : 0;
+
+          if (item.searchDialog) {
+            return (
+              <button
+                key={item.href}
+                type="button"
+                onClick={() => {
+                  openSearch();
+                  onNavigate?.();
+                }}
+                className="relative inline-flex w-full items-center gap-1.5 rounded-2xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {item.label}
+              </button>
+            );
+          }
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={onNavigate}
+              className={cn(
+                "relative inline-flex w-full items-center gap-1.5 rounded-2xl px-3 py-2.5 text-sm font-medium transition-colors",
+                active
+                  ? "bg-white text-foreground shadow-sm ring-1 ring-black/5 dark:bg-white/95 dark:text-black"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              {item.label}
+              {count > 0 && (
+                <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+                  {count > 99 ? "99+" : count}
+                </span>
+              )}
+            </Link>
+          );
+        })}
+      </nav>
+    );
+  }
+
   return (
-    <nav
-      className={cn(
-        vertical ? "flex flex-col gap-1" : "hidden items-center gap-1 md:flex"
-      )}
-    >
+    <nav className="flex items-center gap-0.5" aria-label="Main">
       {NAV.map((item) => {
-        const active =
-          item.href === "/"
-            ? pathname === "/"
-            : pathname.startsWith(item.href);
+        const active = isActive(pathname, item.href);
         const Icon = item.icon;
+        const count =
+          item.badgeKey && badges[item.badgeKey] ? badges[item.badgeKey] : 0;
+
+        const className = cn(
+          "vexa-nav-item group relative inline-flex h-9 items-center justify-center overflow-hidden rounded-full",
+          "transition-[max-width,padding,gap,background-color,color,box-shadow,width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
+          active
+            ? "max-w-[9rem] gap-1.5 bg-white px-3 text-foreground shadow-sm ring-1 ring-black/[0.06] dark:bg-white dark:text-black dark:ring-white/20"
+            : "max-w-9 gap-0 bg-transparent px-0 text-muted-foreground hover:text-foreground"
+        );
+
+        const inner = (
+          <>
+            <span className="relative inline-flex shrink-0">
+              <Icon className="h-[18px] w-[18px]" />
+              {count > 0 && !active && (
+                <span className="absolute -right-1.5 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[8px] font-bold leading-none text-primary-foreground">
+                  {count > 9 ? "9+" : count}
+                </span>
+              )}
+            </span>
+            <span
+              className={cn(
+                "whitespace-nowrap text-[13px] font-medium tracking-tight",
+                "transition-[opacity,max-width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                active
+                  ? "max-w-[5rem] opacity-100"
+                  : "max-w-0 overflow-hidden opacity-0"
+              )}
+            >
+              {item.label}
+            </span>
+            {count > 0 && active && (
+              <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
+                {count > 99 ? "99+" : count}
+              </span>
+            )}
+            <span className="sr-only">{item.label}</span>
+          </>
+        );
+
+        if (item.searchDialog) {
+          return (
+            <button
+              key={item.href}
+              type="button"
+              title={item.label}
+              onClick={() => openSearch()}
+              className={className}
+              style={{ minWidth: 36, width: 36 }}
+            >
+              {inner}
+            </button>
+          );
+        }
+
         return (
           <Link
             key={item.href}
             href={item.href}
-            onClick={onNavigate}
-            className={cn(
-              "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
-              vertical && "w-full",
-              active
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            )}
+            title={item.label}
+            className={className}
+            style={{
+              minWidth: active ? undefined : 36,
+              width: active ? "auto" : 36,
+            }}
           >
-            <Icon className="h-4 w-4" />
-            {item.label}
+            {inner}
           </Link>
         );
       })}
@@ -81,62 +213,132 @@ function NavLinks({
   );
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+function AppShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isMarketing = pathname === "/welcome";
+  const [badges, setBadges] = useState<Record<string, number>>({});
+  const [navOpen, setNavOpen] = useState(false);
+
+  useEffect(() => {
+    setNavOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const [appsRes, statsRes] = await Promise.all([
+          fetch("/api/applications"),
+          fetch("/api/stats/weekly").catch(() => null),
+        ]);
+        const appsData = await appsRes.json();
+        const apps = appsData.applications || [];
+        const review = apps.filter(
+          (a: { status?: string }) => a.status === "requires_review"
+        ).length;
+        let outreach = 0;
+        if (statsRes?.ok) {
+          const s = await statsRes.json();
+          outreach = s.stats?.coldEmails?.followUpsDue ?? 0;
+        }
+        if (!cancelled) {
+          setBadges({ inbox: review, outreach });
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    void load();
+    const id = window.setInterval(load, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [pathname]);
 
   if (isMarketing) {
     return <>{children}</>;
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur-xl">
-        <div className="container flex h-14 items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <Sheet>
+    <div className="min-h-screen overflow-x-hidden bg-background">
+      <header className="sticky top-0 z-40 border-b border-border/40 bg-background/90 pt-2 backdrop-blur-xl supports-[backdrop-filter]:bg-background/75 sm:pt-3">
+        <div className="container relative flex h-12 items-center justify-between gap-2 pb-2 sm:h-14 sm:gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
+            <Sheet open={navOpen} onOpenChange={setNavOpen}>
               <SheetTrigger asChild>
-                <Button variant="outline" size="icon" className="md:hidden">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 shrink-0 rounded-full md:hidden"
+                  aria-label="Open menu"
+                >
                   <Menu className="h-4 w-4" />
-                  <span className="sr-only">Open menu</span>
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-72">
+              <SheetContent
+                side="left"
+                className="w-[min(100vw-2rem,18rem)] p-5"
+              >
                 <SheetHeader>
-                  <SheetTitle>{APP_NAME}</SheetTitle>
+                  <SheetTitle className="flex items-center gap-1.5 text-[17px] leading-none">
+                    <VexaLogo size="match" animated={false} />
+                    <span className="font-semibold tracking-tight">
+                      {APP_NAME}
+                    </span>
+                  </SheetTitle>
                 </SheetHeader>
                 <Separator className="my-4" />
-                <NavLinks pathname={pathname} vertical />
+                <NavLinks
+                  pathname={pathname}
+                  vertical
+                  badges={badges}
+                  onNavigate={() => setNavOpen(false)}
+                />
               </SheetContent>
             </Sheet>
 
-            <Link href="/" className="flex items-center gap-2.5">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary font-mono text-xs font-bold text-primary-foreground">
-                Vx
+            <Link
+              href="/"
+              className="vexa-brand flex min-w-0 items-center gap-1.5 text-[17px] leading-none sm:text-[18px]"
+              onClick={() => setNavOpen(false)}
+            >
+              <VexaLogo size="match" />
+              <span className="vexa-wordmark truncate font-semibold leading-none tracking-tight">
+                {APP_NAME}
               </span>
-              <div className="hidden leading-tight sm:block">
-                <div className="text-sm font-semibold tracking-tight">
-                  {APP_NAME}
-                </div>
-                <div className="text-[11px] text-muted-foreground">
-                  {APP_TAGLINE}
-                </div>
-              </div>
             </Link>
           </div>
 
-          <NavLinks pathname={pathname} />
+          <div className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 md:block">
+            <div className="rounded-full bg-muted/70 p-1 shadow-sm ring-1 ring-black/5 dark:ring-white/10">
+              <NavLinks pathname={pathname} badges={badges} />
+            </div>
+          </div>
 
-          <div className="flex items-center gap-2">
-            <MemoryVaultButton />
-            <ModeToggle />
-            <Button asChild size="sm">
-              <Link href="/inbox">Ready to apply</Link>
-            </Button>
+          <div className="relative z-10 flex shrink-0 items-center justify-end">
+            <div className="flex h-9 items-center gap-0 rounded-full bg-muted/80 p-0.5 shadow-sm ring-1 ring-black/5 dark:ring-white/10 sm:h-10 sm:gap-0.5 sm:p-1">
+              <ModelStatusBadge />
+              <ModeToggle />
+              <div className="hidden sm:block">
+                <MemoryVaultButton />
+              </div>
+              <AutomateDialog compact />
+            </div>
           </div>
         </div>
       </header>
-      <main className="container py-8">{children}</main>
+      <main className="container relative z-0 max-w-full overflow-x-hidden py-4 pb-20 sm:py-6 sm:pb-12">
+        {children}
+      </main>
     </div>
+  );
+}
+
+export function AppShell({ children }: { children: React.ReactNode }) {
+  return (
+    <SearchProvider>
+      <AppShellInner>{children}</AppShellInner>
+    </SearchProvider>
   );
 }

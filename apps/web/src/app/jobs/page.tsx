@@ -2,29 +2,30 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import type { JobListing } from "@vexa/shared";
-import { ExternalLink, Loader2, Search } from "lucide-react";
+import {
+  ChevronDown,
+  ExternalLink,
+  Loader2,
+  Search,
+} from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useSearchDialog } from "@/components/SearchProvider";
+import { appendLog } from "@/lib/activity-bus";
+import { cn } from "@/lib/utils";
 
 export default function JobsPage() {
-  const router = useRouter();
+  const { openSearch } = useSearchDialog();
   const [jobs, setJobs] = useState<JobListing[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [running, setRunning] = useState(false);
-  const [q, setQ] = useState("senior frontend engineer remote");
+  const [q, setQ] = useState("software engineer");
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   async function load() {
     const res = await fetch("/api/jobs");
@@ -33,14 +34,8 @@ export default function JobsPage() {
   }
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
-
-  function goLiveSearch() {
-    const query = q.trim();
-    if (!query) return;
-    router.push(`/search?q=${encodeURIComponent(query)}`);
-  }
 
   async function prepare(jobId: string) {
     setBusyId(jobId);
@@ -56,6 +51,11 @@ export default function JobsPage() {
       setNote(data.error);
       return;
     }
+    appendLog({
+      kind: "draft",
+      message: `Draft prepared for ${data.draft?.job?.company || jobId}`,
+      status: "done",
+    });
     setNote(
       `Draft ready for ${data.draft?.id ?? "application"} — check Draft Inbox.`
     );
@@ -64,118 +64,196 @@ export default function JobsPage() {
   async function startAutomation() {
     setRunning(true);
     setNote("");
-    const res = await fetch("/api/automation/start", { method: "POST" });
+    const res = await fetch("/api/automation/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "drafts", maxDrafts: 5 }),
+    });
     const data = await res.json();
     setRunning(false);
     setNote(
       `Automation prepared ${data.prepared ?? 0} draft(s). Open Draft Inbox.`
     );
+    appendLog({
+      kind: "automation",
+      message: `Batch drafts: ${data.prepared ?? 0} prepared`,
+      status: "done",
+    });
+    void load();
   }
 
   return (
-    <div className="space-y-8">
+    <div className="mx-auto max-w-3xl space-y-5">
       <PageHeader
         eyebrow="Jobs"
-        title="Find roles"
-        description="Live search streams company sites first, then job portals, then LinkedIn — cards appear one by one."
+        title="Pipeline"
+        description="Compact list of roles you found. Expand a row for actions."
         actions={
-          <Button variant="outline" disabled={running} onClick={startAutomation}>
-            {running && <Loader2 className="animate-spin" />}
-            Prepare drafts (saved list)
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={running}
+            onClick={() => void startAutomation()}
+          >
+            {running && <Loader2 className="size-3.5 animate-spin" />}
+            Prepare drafts
           </Button>
         }
       />
 
-      <Card className="border-primary/20">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Live search</CardTitle>
-          <CardDescription>
-            Opens a live results page with loaders and priority sources.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form
-            className="flex flex-col gap-2 sm:flex-row"
-            onSubmit={(e) => {
-              e.preventDefault();
-              goLiveSearch();
-            }}
-          >
-            <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Role, skills, remote…"
-              className="flex-1"
-            />
-            <Button type="submit">
-              <Search />
-              Search live
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+      {/* Open search dialog */}
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          openSearch(q.trim() || undefined);
+        }}
+      >
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Find roles…"
+          className="h-9 flex-1"
+        />
+        <Button type="submit" size="sm" className="h-9 shrink-0">
+          <Search className="size-3.5" />
+          Search
+        </Button>
+      </form>
 
       {note && (
         <Alert>
           <AlertDescription>
             {note}{" "}
-            <Link href="/inbox" className="font-medium text-primary underline">
+            <Link href="/inbox" className="font-medium underline">
               Open inbox
             </Link>
           </AlertDescription>
         </Alert>
       )}
 
-      <div>
-        <h2 className="mb-3 text-sm font-medium text-muted-foreground">
-          Saved / recent listings ({jobs.length})
-        </h2>
-        <div className="space-y-3">
-          {jobs.map((job) => (
-            <Card key={job.id}>
-              <CardHeader className="flex flex-col gap-3 space-y-0 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <CardTitle className="text-lg">{job.title}</CardTitle>
-                    <Badge variant="secondary">{job.source}</Badge>
-                    {job.location.remote && (
-                      <Badge variant="success">Remote</Badge>
-                    )}
-                  </div>
-                  <CardDescription>
-                    {job.company}
-                    {job.location.city ? ` · ${job.location.city}` : ""}
-                  </CardDescription>
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <Button variant="outline" size="sm" asChild>
-                    <a href={job.externalUrl} target="_blank" rel="noreferrer">
-                      View <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  </Button>
-                  <Button
-                    size="sm"
-                    disabled={busyId === job.id}
-                    onClick={() => prepare(job.id)}
-                  >
-                    {busyId === job.id && <Loader2 className="animate-spin" />}
-                    {busyId === job.id ? "Preparing…" : "Prepare draft"}
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="line-clamp-2 text-sm text-muted-foreground">
-                  {job.description}
-                </p>
-              </CardContent>
-            </Card>
-          ))}
-          {jobs.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              No saved jobs yet. Run a live search above.
-            </p>
-          )}
+      <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-sm">
+        <div className="flex items-center justify-between border-b border-border/60 bg-muted/30 px-3 py-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Listings
+          </p>
+          <span className="font-mono text-[11px] text-muted-foreground">
+            {jobs.length}
+          </span>
         </div>
+
+        {jobs.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+            No jobs yet.{" "}
+            <button
+              type="button"
+              className="font-medium underline"
+              onClick={() => openSearch()}
+            >
+              Run a search
+            </button>
+          </p>
+        ) : (
+          <ul>
+            {jobs.map((job) => {
+              const open = expanded === job.id;
+              return (
+                <li
+                  key={job.id}
+                  className="border-b border-border/40 last:border-0"
+                >
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-muted/30"
+                    onClick={() => setExpanded(open ? null : job.id)}
+                    aria-expanded={open}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-semibold tracking-tight">
+                        {job.title}
+                      </p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {job.company}
+                        {job.location?.city ? ` · ${job.location.city}` : ""}
+                        {job.location?.remote ? " · Remote" : ""}
+                      </p>
+                    </div>
+                    <Badge
+                      variant="secondary"
+                      className="shrink-0 text-[9px]"
+                    >
+                      {job.source}
+                    </Badge>
+                    <ChevronDown
+                      className={cn(
+                        "size-4 shrink-0 text-muted-foreground transition-transform duration-300 ease-out",
+                        open && "rotate-180"
+                      )}
+                    />
+                  </button>
+
+                  {/* Smooth expand */}
+                  <div
+                    className={cn(
+                      "grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                      open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                    )}
+                  >
+                    <div className="overflow-hidden">
+                      <div className="space-y-2.5 border-t border-border/30 bg-muted/15 px-3 pb-3 pt-2">
+                        <p className="line-clamp-4 text-[12px] leading-relaxed text-muted-foreground">
+                          {job.description || "No description available."}
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          <Button
+                            size="sm"
+                            className="h-8 text-[12px]"
+                            disabled={busyId === job.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void prepare(job.id);
+                            }}
+                          >
+                            {busyId === job.id && (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            )}
+                            {busyId === job.id
+                              ? "Preparing…"
+                              : "Prepare draft"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-[12px]"
+                            asChild
+                          >
+                            <a
+                              href={job.externalUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              View listing
+                              <ExternalLink className="size-3" />
+                            </a>
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 text-[12px]"
+                            asChild
+                          >
+                            <Link href="/inbox">Inbox</Link>
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
     </div>
   );

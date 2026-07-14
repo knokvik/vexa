@@ -5,55 +5,57 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    --foreground: 0 0% 7%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 0 0% 7%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 199 89% 48%;
+    --popover-foreground: 0 0% 7%;
+    /* Black accent (not light blue) */
+    --primary: 0 0% 9%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 199 89% 96%;
-    --accent-foreground: 199 89% 30%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --success: 142 71% 45%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 12%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 40%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 60% 36%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
+    --warning: 32 95% 44%;
     --warning-foreground: 0 0% 100%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 199 89% 48%;
-    --radius: 0.75rem;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 0 0% 9%;
+    --radius: 0.85rem;
   }
 
   .dark {
-    --background: 240 10% 3.9%;
+    --background: 0 0% 6%;
     --foreground: 0 0% 98%;
-    --card: 240 10% 6%;
+    --card: 0 0% 9%;
     --card-foreground: 0 0% 98%;
-    --popover: 240 10% 6%;
+    --popover: 0 0% 9%;
     --popover-foreground: 0 0% 98%;
-    --primary: 187 85% 53%;
-    --primary-foreground: 240 10% 4%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 187 40% 14%;
-    --accent-foreground: 187 85% 70%;
-    --destructive: 0 62.8% 50%;
+    /* Near-white primary on dark for contrast */
+    --primary: 0 0% 96%;
+    --primary-foreground: 0 0% 7%;
+    --secondary: 0 0% 14%;
+    --secondary-foreground: 0 0% 96%;
+    --muted: 0 0% 14%;
+    --muted-foreground: 0 0% 64%;
+    --accent: 0 0% 14%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62% 50%;
     --destructive-foreground: 0 0% 98%;
-    --success: 142 70% 45%;
+    --success: 142 50% 42%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 10%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 187 85% 53%;
+    --border: 0 0% 16%;
+    --input: 0 0% 16%;
+    --ring: 0 0% 90%;
   }
 }
 
@@ -69,5 +71,146 @@
   body {
     @apply bg-background text-foreground antialiased;
     min-height: 100%;
+    /* Geist — main font (body, nav, buttons, headings, cards) */
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+    letter-spacing: -0.011em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Phone: prevent horizontal scroll from wide cards/headers */
+    overflow-x: hidden;
+  }
+
+  /* Safe area for notched phones when viewing on device */
+  @supports (padding: env(safe-area-inset-bottom)) {
+    body {
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+    }
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  .vexa-wordmark {
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+    letter-spacing: -0.022em;
+    font-weight: 600;
+  }
+
+  code,
+  kbd,
+  pre,
+  .font-mono {
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+  }
+
+  /* —— Hover motion (Apple-soft) —— */
+  a,
+  button,
+  [role="button"] {
+    transition:
+      transform 0.2s cubic-bezier(0.25, 0.1, 0.25, 1),
+      background-color 0.2s ease,
+      color 0.2s ease,
+      box-shadow 0.2s ease,
+      opacity 0.2s ease;
+  }
+
+  /* Brand wordmark hover */
+  .vexa-brand:hover .vexa-wordmark {
+    opacity: 0.8;
+  }
+  .vexa-wordmark {
+    transition: opacity 0.2s ease;
+  }
+
+  /* Cards / list rows */
+  .vexa-hover-lift {
+    transition:
+      transform 0.2s cubic-bezier(0.25, 0.1, 0.25, 1),
+      box-shadow 0.2s ease;
+  }
+  .vexa-hover-lift:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  }
+
+  /* Icon buttons in title bar */
+  .vexa-icon-btn {
+    transition:
+      transform 0.2s cubic-bezier(0.25, 0.1, 0.25, 1),
+      background-color 0.2s ease;
+  }
+  .vexa-icon-btn:hover {
+    transform: scale(1.1);
+  }
+  .vexa-icon-btn:active {
+    transform: scale(0.94);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  a,
+  button,
+  [role="button"],
+  .vexa-nav-item,
+  .vexa-logo,
+  .vexa-hover-lift,
+  .vexa-icon-btn {
+    transition: none !important;
+  }
+  .vexa-nav-item:hover,
+  .vexa-brand:hover .vexa-logo,
+  .vexa-icon-btn:hover,
+  .vexa-hover-lift:hover {
+    transform: none !important;
+  }
+}
+
+/**
+ * Spin in place only — no scale (scale looked like orbiting).
+ * Slow turn then quicker second turn.
+ */
+@keyframes vexa-logo-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  55% {
+    transform: rotate(360deg);
+  }
+  65% {
+    transform: rotate(360deg);
+  }
+  100% {
+    transform: rotate(720deg);
+  }
+}
+
+.vexa-logo-spin {
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: vexa-logo-spin 7.5s cubic-bezier(0.45, 0.05, 0.25, 1) infinite;
+  transform-origin: 50% 50%;
+  transform-box: fill-box;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* Hover scale on outer logo only — does not touch the spinning child */
+.vexa-brand:hover .vexa-logo {
+  transform: scale(1.05);
+}
+.vexa-logo {
+  transition: transform 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vexa-logo-spin {
+    animation: none !important;
+  }
+  .vexa-brand:hover .vexa-logo {
+    transform: none;
   }
 }
