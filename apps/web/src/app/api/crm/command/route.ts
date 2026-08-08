@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { parseCommand, liveSuggestions } from "@/lib/crm/command";
+import {
+  parseCommand,
+  parseCommandSmart,
+  liveSuggestions,
+} from "@/lib/crm/command";
 import { ingestEmail, parsePastedEmail } from "@/lib/crm/ingest";
 import { discoverJobs } from "@/lib/discover";
 import { store } from "@/lib/store";
@@ -10,12 +14,14 @@ import {
   deleteUserTask,
   findTasksByTitle,
   listUserTasks,
+  listApplications,
+  upsertApplication,
 } from "@/lib/crm/db";
-import type { JobListing } from "@vexa/shared";
+import type { JobListing, PipelineStage } from "@vexa/shared";
 import { rememberEvent } from "@/lib/app-memory";
 
 /**
- * Universal command bar — email, jobs, tasks, scrapers, services.
+ * Chatbot-style command bar: understand intent, run the tool, reply.
  */
 export async function POST(request: Request) {
   try {
@@ -34,8 +40,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "text required" }, { status: 400 });
     }
 
-    const parsed = parseCommand(text);
-    const working: string[] = [`Intent: ${parsed.intent}`];
+    const parsed = await parseCommandSmart(text);
+    const working: string[] = [
+      `Understood: ${parsed.intent}${parsed.confidence ? ` (${Math.round(parsed.confidence * 100)}%)` : ""}`,
+    ];
+    if (parsed.reply) working.push(parsed.reply);
+
+    const withReply = (
+      extra: Record<string, unknown>,
+      reply?: string
+    ) =>
+      NextResponse.json({
+        ok: true,
+        intent: parsed.intent,
+        reply: reply || parsed.reply || working[working.length - 1],
+        working,
+        suggestions: parsed.suggestions,
+        ...extra,
+      });
 
     if (parsed.intent === "email_ingest") {
       working.push("Classifying email…");
@@ -51,89 +73,91 @@ export async function POST(request: Request) {
         `${result.classification} → ${result.stage || "linked"}`,
         ...result.notes
       );
-      return NextResponse.json({
-        ok: true,
-        intent: parsed.intent,
-        working,
-        result: {
-          classification: result.classification,
-          stage: result.stage,
-          companyId: result.companyId,
-          applicationId: result.applicationId,
-          extracted: result.email.extracted,
+      return withReply(
+        {
+          result: {
+            classification: result.classification,
+            stage: result.stage,
+            companyId: result.companyId,
+            applicationId: result.applicationId,
+            extracted: result.email.extracted,
+          },
         },
-        suggestions: parsed.suggestions,
-      });
+        `Filed as ${result.classification}${result.stage ? ` · stage ${result.stage}` : ""}${result.email.extracted.companyName ? ` · ${result.email.extracted.companyName}` : ""}.`
+      );
     }
 
     if (
       parsed.intent === "job_search" ||
       parsed.intent === "start_scrape"
     ) {
-      const query = parsed.query || text;
-      working.push(
-        parsed.intent === "start_scrape"
-          ? `Starting free scrapers for “${query}”…`
-          : `Searching free boards for “${query}”…`
-      );
+      const query = (parsed.query || text).trim() || "software engineer";
+      working.push(`Searching free boards for “${query}”…`);
       await store.ensureHydrated();
       const r = await discoverJobs(query, { skipLinkedIn: true, limit: 30 });
       store.upsertJobs(r.jobs as JobListing[]);
       const sourceLines = Object.entries(r.sources || {}).map(
         ([k, v]) =>
-          `${k}: ${(v as { count?: number; error?: string }).count ?? 0}${(v as { error?: string }).error ? ` (${(v as { error?: string }).error})` : ""}`
+          `${k}: ${(v as { count?: number; error?: string }).count ?? 0}${(v as { error?: string }).error ? ` (!)` : ""}`
       );
       working.push(`Found ${r.jobs.length} roles`);
-      working.push(...sourceLines.slice(0, 12));
+      working.push(...sourceLines.slice(0, 10));
       await rememberEvent({
         type: "search",
         query,
         note: `command discover=${r.jobs.length}`,
       }).catch(() => null);
-      return NextResponse.json({
-        ok: true,
-        intent: parsed.intent,
-        working,
-        result: {
-          query,
-          count: r.jobs.length,
-          jobs: r.jobs.slice(0, 10).map((j) => ({
-            id: j.id,
-            title: j.title,
-            company: j.company,
-            url: j.externalUrl,
-            source: j.source,
-          })),
-          sources: r.sources,
+
+      const top = r.jobs.slice(0, 8).map((j) => ({
+        id: j.id,
+        title: j.title,
+        company: j.company,
+        url: j.externalUrl,
+        source: j.source,
+      }));
+      for (const j of top.slice(0, 5)) {
+        working.push(`· ${j.title} @ ${j.company}`);
+      }
+
+      return withReply(
+        {
+          result: {
+            query,
+            count: r.jobs.length,
+            jobs: top,
+            sources: r.sources,
+          },
+          navigate: "/jobs",
         },
-        suggestions: parsed.suggestions,
-        navigate: "/jobs",
-      });
+        r.jobs.length
+          ? `Found ${r.jobs.length} roles for “${query}”. Top ones are listed below — open Jobs for the full board.`
+          : `No solid matches for “${query}” yet. Try a more specific role or keywords.`
+      );
     }
 
     if (parsed.intent === "services_status") {
       working.push("Checking live services…");
-      const { GET: statusGet } = await import("@/app/api/services/status/route");
+      const { GET: statusGet } = await import(
+        "@/app/api/services/status/route"
+      );
       const res = await statusGet();
       const data = await res.json();
       const services = (data.services || []) as Array<{
         name: string;
         status: string;
         workingOn: string;
-        kind: string;
       }>;
       working.push(data.summary || `${services.length} services`);
       for (const s of services.slice(0, 14)) {
         working.push(`${s.name}: ${s.status} — ${s.workingOn}`);
       }
-      return NextResponse.json({
-        ok: true,
-        intent: parsed.intent,
-        working,
-        result: { summary: data.summary, services },
-        suggestions: parsed.suggestions,
-        navigate: "/services",
-      });
+      return withReply(
+        {
+          result: { summary: data.summary, services },
+          navigate: "/services",
+        },
+        data.summary || "Service status ready."
+      );
     }
 
     if (parsed.intent === "network_query") {
@@ -141,21 +165,25 @@ export async function POST(request: Request) {
       working.push(`Looking up contacts at ${company}…`);
       const direct = await whoDoIKnowAt(company);
       working.push(`${direct.length} contact(s)`);
-      return NextResponse.json({
-        ok: true,
-        intent: parsed.intent,
-        working,
-        result: {
-          company,
-          contacts: direct.map((d) => ({
-            name: d.contact.name,
-            email: d.contact.email,
-            role: d.contact.roleType,
-            title: d.contact.title,
-          })),
+      for (const d of direct.slice(0, 8)) {
+        working.push(`· ${d.contact.name} <${d.contact.email}>`);
+      }
+      return withReply(
+        {
+          result: {
+            company,
+            contacts: direct.map((d) => ({
+              name: d.contact.name,
+              email: d.contact.email,
+              role: d.contact.roleType,
+              title: d.contact.title,
+            })),
+          },
         },
-        suggestions: parsed.suggestions,
-      });
+        direct.length
+          ? `You have ${direct.length} contact(s) at ${company}.`
+          : `No contacts at ${company} yet — paste recruiter emails to grow the graph.`
+      );
     }
 
     if (parsed.intent === "add_task") {
@@ -165,14 +193,11 @@ export async function POST(request: Request) {
         title,
         kind: parsed.taskKind || "personal",
       });
-      working.push(`Saved · id ${task.id} · kind ${task.kind}`);
-      return NextResponse.json({
-        ok: true,
-        intent: parsed.intent,
-        working,
-        result: { task },
-        suggestions: parsed.suggestions,
-      });
+      working.push(`Saved · ${task.kind}`);
+      return withReply(
+        { result: { task }, navigate: "/timeline" },
+        `Added task “${task.title}” to your timeline.`
+      );
     }
 
     if (parsed.intent === "complete_task") {
@@ -182,13 +207,10 @@ export async function POST(request: Request) {
       const open = hits.filter((t) => !t.done);
       if (!open.length) {
         working.push("No open task matched");
-        return NextResponse.json({
-          ok: true,
-          intent: parsed.intent,
-          working,
-          result: { matched: 0 },
-          suggestions: ["List tasks", "Task: new item"],
-        });
+        return withReply(
+          { result: { matched: 0 } },
+          `I couldn't find an open task matching “${q}”. Try “list tasks”.`
+        );
       }
       const t = open[0];
       await upsertUserTask({
@@ -199,13 +221,10 @@ export async function POST(request: Request) {
         dueAt: t.dueAt,
       });
       working.push(`Completed: ${t.title}`);
-      return NextResponse.json({
-        ok: true,
-        intent: parsed.intent,
-        working,
-        result: { task: { ...t, done: true } },
-        suggestions: parsed.suggestions,
-      });
+      return withReply(
+        { result: { task: { ...t, done: true } } },
+        `Done — “${t.title}” is completed.`
+      );
     }
 
     if (parsed.intent === "remove_task") {
@@ -214,23 +233,18 @@ export async function POST(request: Request) {
       const hits = await findTasksByTitle(q);
       if (!hits.length) {
         working.push("No task matched");
-        return NextResponse.json({
-          ok: true,
-          intent: parsed.intent,
-          working,
-          result: { removed: 0 },
-        });
+        return withReply(
+          { result: { removed: 0 } },
+          `No task matched “${q}”.`
+        );
       }
       const t = hits[0];
       await deleteUserTask(t.id);
       working.push(`Removed: ${t.title}`);
-      return NextResponse.json({
-        ok: true,
-        intent: parsed.intent,
-        working,
-        result: { removed: 1, title: t.title },
-        suggestions: parsed.suggestions,
-      });
+      return withReply(
+        { result: { removed: 1, title: t.title } },
+        `Removed “${t.title}”.`
+      );
     }
 
     if (parsed.intent === "list_tasks") {
@@ -242,72 +256,118 @@ export async function POST(request: Request) {
           `· ${t.title}${t.dueAt ? ` (due ${t.dueAt.slice(0, 10)})` : ""} [${t.kind}]`
         );
       }
-      return NextResponse.json({
-        ok: true,
-        intent: parsed.intent,
-        working,
-        result: {
-          tasks: tasks.map((t) => ({
-            id: t.id,
-            title: t.title,
-            kind: t.kind,
-            dueAt: t.dueAt,
-            done: t.done,
-          })),
+      return withReply(
+        {
+          result: {
+            tasks: tasks.map((t) => ({
+              id: t.id,
+              title: t.title,
+              kind: t.kind,
+              dueAt: t.dueAt,
+              done: t.done,
+            })),
+          },
+          navigate: "/timeline",
         },
-        suggestions: parsed.suggestions,
-        navigate: "/timeline",
-      });
+        tasks.length
+          ? `You have ${tasks.length} open task(s).`
+          : "No open tasks — say “add task: …” to create one."
+      );
+    }
+
+    if (parsed.intent === "update_stage") {
+      const company = (parsed.company || "").trim();
+      const stage = (parsed.stage || "applied").toLowerCase() as PipelineStage;
+      working.push(`Updating stage → ${stage} for “${company}”…`);
+      const apps = await listApplications();
+      const hits = apps.filter(
+        (a) =>
+          a.status === "active" &&
+          (a.companyName.toLowerCase().includes(company.toLowerCase()) ||
+            a.jobTitle.toLowerCase().includes(company.toLowerCase()))
+      );
+      if (!hits.length) {
+        return withReply(
+          { result: { updated: 0 } },
+          `No active applications matched “${company}”.`
+        );
+      }
+      for (const a of hits.slice(0, 5)) {
+        await upsertApplication({
+          ...a,
+          stage,
+          lastTouchAt: new Date().toISOString(),
+        });
+        working.push(`· ${a.jobTitle} @ ${a.companyName} → ${stage}`);
+      }
+      return withReply(
+        { result: { updated: hits.length, stage, company } },
+        `Updated ${Math.min(hits.length, 5)} application(s) to “${stage}”.`
+      );
     }
 
     if (parsed.intent === "briefing") {
       working.push("Running action engine…");
       const briefing = await morningBriefing();
       working.push(briefing.summary);
-      return NextResponse.json({
-        ok: true,
-        intent: parsed.intent,
-        working,
-        result: briefing,
-        suggestions: parsed.suggestions,
-      });
+      return withReply(
+        { result: briefing, navigate: "/timeline" },
+        briefing.summary
+      );
     }
 
-    if (parsed.intent === "workspace" || /workspace|tables?/i.test(text)) {
-      return NextResponse.json({
-        ok: true,
-        intent: "workspace",
-        working: ["Open Workspace for tables"],
-        result: { navigate: "/workspace" },
-        suggestions: ["List tasks", "Service status"],
-        navigate: "/workspace",
-      });
+    if (parsed.intent === "workspace") {
+      return withReply(
+        {
+          working: ["Open Workspace for tables"],
+          result: { navigate: "/workspace" },
+          navigate: "/workspace",
+        },
+        "Opening your tables workspace."
+      );
     }
 
-    // Fallback job search
-    working.push("Treating as job search…");
+    if (parsed.intent === "chat" || parsed.intent === "unknown") {
+      return withReply(
+        {
+          result: { help: true },
+        },
+        parsed.reply ||
+          "I can find jobs, add/complete/remove tasks, paste emails, check scrapers, or brief you. Try: “find remote software engineer jobs”."
+      );
+    }
+
+    // Fallback: job search
+    working.push("Searching jobs…");
     const r = await discoverJobs(text, { skipLinkedIn: true, limit: 16 });
     store.upsertJobs(r.jobs as JobListing[]);
     working.push(`Found ${r.jobs.length} roles`);
-    return NextResponse.json({
-      ok: true,
-      intent: "job_search",
-      working,
-      result: {
-        query: text,
-        count: r.jobs.length,
-        jobs: r.jobs.slice(0, 6).map((j) => ({
-          id: j.id,
-          title: j.title,
-          company: j.company,
-          url: j.externalUrl,
-        })),
+    return withReply(
+      {
+        intent: "job_search",
+        result: {
+          query: text,
+          count: r.jobs.length,
+          jobs: r.jobs.slice(0, 8).map((j) => ({
+            id: j.id,
+            title: j.title,
+            company: j.company,
+            url: j.externalUrl,
+          })),
+        },
+        navigate: "/jobs",
       },
-      suggestions: liveSuggestions(text),
-    });
+      r.jobs.length
+        ? `Found ${r.jobs.length} roles.`
+        : "No roles found — try a clearer job title."
+    );
   } catch (e) {
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "command failed" },
+      {
+        ok: false,
+        error: e instanceof Error ? e.message : "command failed",
+        reply: e instanceof Error ? e.message : "Something went wrong.",
+      },
       { status: 500 }
     );
   }

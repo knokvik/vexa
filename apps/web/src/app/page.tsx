@@ -28,10 +28,12 @@ import {
 type CommandResult = {
   ok?: boolean;
   intent?: string;
+  reply?: string;
   working?: string[];
   result?: Record<string, unknown>;
   suggestions?: string[];
   error?: string;
+  navigate?: string;
 };
 
 const QUICK = [
@@ -47,35 +49,14 @@ const QUICK = [
 
 function oneLineSummary(data: CommandResult, prompt: string): string {
   if (data.error) return data.error.slice(0, 100);
+  if (data.reply) return data.reply.slice(0, 200);
   const w = data.working || [];
-  if (data.intent === "email_ingest")
-    return w[w.length - 1] || "Email ingested";
   if (data.intent === "job_search" || data.intent === "start_scrape") {
     const n = (data.result as { count?: number })?.count;
     return n != null
-      ? `Found ${n} roles · scrapers ran for “${prompt.slice(0, 28)}”`
+      ? `Found ${n} roles for “${prompt.slice(0, 40)}”`
       : "Search complete";
   }
-  if (data.intent === "services_status")
-    return (
-      (data.result as { summary?: string })?.summary || "Service status loaded"
-    );
-  if (data.intent === "network_query") {
-    const n = ((data.result as { contacts?: unknown[] })?.contacts || [])
-      .length;
-    return `${n} contact(s) at ${(data.result as { company?: string })?.company || "company"}`;
-  }
-  if (data.intent === "briefing")
-    return String(
-      (data.result as { summary?: string })?.summary || "Briefing ready"
-    ).slice(0, 120);
-  if (data.intent === "add_task") return "Task added";
-  if (data.intent === "complete_task")
-    return w.find((x) => x.startsWith("Completed")) || "Task completed";
-  if (data.intent === "remove_task")
-    return w.find((x) => x.startsWith("Removed")) || "Task removed";
-  if (data.intent === "list_tasks")
-    return w.find((x) => x.includes("open")) || "Tasks listed";
   return w[w.length - 1] || data.intent || "Done";
 }
 
@@ -111,6 +92,10 @@ export default function DashboardPage() {
   const [micError, setMicError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
   const [inputFocused, setInputFocused] = useState(false);
+  const [chatReply, setChatReply] = useState<string | null>(null);
+  const [lastJobs, setLastJobs] = useState<
+    Array<{ id: string; title: string; company: string; url?: string }>
+  >([]);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recRef = useRef<SpeechRec | null>(null);
@@ -287,6 +272,15 @@ export default function DashboardPage() {
       });
       const data = (await res.json()) as CommandResult;
       const summary = oneLineSummary(data, payload);
+      setChatReply(data.reply || summary);
+      const jobs =
+        (data.result?.jobs as Array<{
+          id: string;
+          title: string;
+          company: string;
+          url?: string;
+        }>) || [];
+      setLastJobs(jobs);
       const list = pushHistory({
         prompt: payload.slice(0, 400),
         summary,
@@ -296,7 +290,13 @@ export default function DashboardPage() {
         result: data.result as Record<string, unknown> | undefined,
       });
       setHistory(list);
-      if (list[0]) {
+      // Only auto-open sheet for mutations / big results
+      if (
+        list[0] &&
+        ["email_ingest", "add_task", "complete_task", "remove_task", "update_stage"].includes(
+          data.intent || ""
+        )
+      ) {
         setSheetEntry(list[0]);
         setSheetOpen(true);
       }
@@ -319,6 +319,7 @@ export default function DashboardPage() {
           "start_scrape",
           "complete_task",
           "remove_task",
+          "update_stage",
         ].includes(data.intent || "")
       ) {
         setRefreshKey((k) => k + 1);
@@ -326,6 +327,7 @@ export default function DashboardPage() {
       if (data.ok !== false) setText("");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed";
+      setChatReply(msg);
       setHistory(pushHistory({ prompt: payload, summary: msg, ok: false }));
       reportActivity({ tool: "command", action: msg, status: "error" });
     } finally {
@@ -538,6 +540,55 @@ export default function DashboardPage() {
                   {s}
                 </button>
               ))}
+            </div>
+          )}
+
+          {/* Chatbot reply + job results */}
+          {(chatReply || busy) && (
+            <div className="w-full rounded-2xl border bg-card px-4 py-3 text-left shadow-sm">
+              {busy ? (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" /> Working on it…
+                </p>
+              ) : (
+                <p className="text-sm leading-relaxed">{chatReply}</p>
+              )}
+              {lastJobs.length > 0 && !busy && (
+                <ul className="mt-3 space-y-1.5 border-t pt-2">
+                  {lastJobs.slice(0, 6).map((j) => (
+                    <li
+                      key={j.id}
+                      className="flex items-start justify-between gap-2 text-xs"
+                    >
+                      <span>
+                        <strong>{j.title}</strong>
+                        <span className="text-muted-foreground">
+                          {" "}
+                          · {j.company}
+                        </span>
+                      </span>
+                      {j.url && (
+                        <a
+                          href={j.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="shrink-0 underline"
+                        >
+                          Open
+                        </a>
+                      )}
+                    </li>
+                  ))}
+                  <li>
+                    <Link
+                      href="/jobs"
+                      className="text-xs font-medium underline"
+                    >
+                      View all on Jobs →
+                    </Link>
+                  </li>
+                </ul>
+              )}
             </div>
           )}
         </div>

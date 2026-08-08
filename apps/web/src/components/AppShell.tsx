@@ -204,7 +204,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-background">
-      <header className="sticky top-0 z-40 border-b border-border/40 bg-background/90 pt-2 backdrop-blur-xl supports-[backdrop-filter]:bg-background/75 sm:pt-3">
+      {/* Fixed top bar — does not scroll away */}
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-border/40 bg-background/95 pt-2 backdrop-blur-xl supports-[backdrop-filter]:bg-background/85 sm:pt-3">
         <div className="vexa-shell relative flex h-12 items-center justify-between gap-2 pb-2 sm:h-14 sm:gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
             <Link
@@ -242,8 +243,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      {/* Extra bottom pad on mobile for floating curved nav */}
-      <main className="vexa-shell relative z-0 overflow-x-hidden py-4 pb-28 sm:py-6 sm:pb-12 md:pb-12">
+      {/* Offset for fixed header height + mobile floating nav */}
+      <main className="vexa-shell relative z-0 overflow-x-hidden pb-28 pt-[4.25rem] sm:pb-12 sm:pt-[4.75rem] md:pb-12">
         <PageTransition>{children}</PageTransition>
       </main>
       <FloatingNav />
