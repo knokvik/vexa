@@ -362,62 +362,105 @@
 
 /**
  * iPhone Notification Center stack
- * Cards stick as you scroll; upper ones pile with scale, then leave upward.
+ *
+ * Each .vexa-ios-stack-slot is the sticky containing block.
+ * Sticky only lasts for that slot’s height — when the slot ends,
+ * the card is pulled up and off (top cards leave, not permanently pinned).
  */
 .vexa-ios-stack {
-  /* room for sticky pile */
-  padding-top: 0.25rem;
+  position: relative;
+  padding-top: 0.15rem;
+  /* last slots need room to fully unstick / leave */
+  padding-bottom: 2.5rem;
+}
+
+/* Bounded travel: stick briefly, then leave upward with the slot */
+.vexa-ios-stack-slot {
+  position: relative;
+  /* card ~88–110px + stick travel before release */
+  min-height: 7.25rem;
+  padding-bottom: 2.75rem;
+  /* overlap next so cards pile while sticky */
+  margin-bottom: -2.1rem;
+}
+
+.vexa-ios-stack-slot:last-child {
+  margin-bottom: 0;
   padding-bottom: 0.5rem;
+  min-height: auto;
 }
 
 .vexa-ios-stack-item {
   position: sticky;
-  margin-bottom: 0.65rem;
-  /* keep scroll height while sticky */
-  padding-bottom: 2px;
+  /* top set inline for pile offset */
+  width: 100%;
 }
 
 .vexa-ios-stack-card {
+  display: block;
+  width: 100%;
   transform-origin: 50% 0%;
-  will-change: transform;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
 }
 
-/* Deeper in the pile = slightly smaller (notification behind look) */
-.vexa-ios-stack-item:nth-child(n + 2) .vexa-ios-stack-card {
-  box-shadow:
-    0 4px 18px rgba(0, 0, 0, 0.08),
-    0 0 0 1px rgba(0, 0, 0, 0.03);
+.vexa-ios-stack-card:active {
+  transform: scale(0.99);
 }
 
-.dark .vexa-ios-stack-item:nth-child(n + 2) .vexa-ios-stack-card {
-  box-shadow:
-    0 8px 28px rgba(0, 0, 0, 0.45),
-    0 0 0 1px rgba(255, 255, 255, 0.06);
-}
-
-/* Animate scale via scroll-driven when supported */
+/* Bottom: grow in · Middle: full size · Top: shrink + fade as they leave */
 @supports (animation-timeline: view()) {
   .vexa-ios-stack-card {
-    animation: vexa-ios-stack-scale linear both;
-    animation-timeline: view();
-    animation-range: entry 0% cover 35%;
+    animation: vexa-ios-notif-lifecycle linear both;
+    animation-timeline: view(block);
+    /* enter from bottom, hold, exit off top */
+    animation-range: entry 0% exit 100%;
   }
 }
 
-@keyframes vexa-ios-stack-scale {
-  from {
-    transform: scale(0.94);
-    opacity: 0.88;
+@keyframes vexa-ios-notif-lifecycle {
+  /* entering from below — small, then grow (what already felt good) */
+  0% {
+    transform: scale(0.9) translateY(18px);
+    opacity: 0.55;
   }
-  to {
-    transform: scale(1);
+  12% {
+    transform: scale(1) translateY(0);
     opacity: 1;
+  }
+  /* fully visible while in the middle of the scroller */
+  55% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+  /* leaving upward — shrink + fade (top chips must not stay forever) */
+  82% {
+    transform: scale(0.94) translateY(-6px);
+    opacity: 0.75;
+  }
+  100% {
+    transform: scale(0.88) translateY(-28px);
+    opacity: 0;
+  }
+}
+
+/* Fallback when scroll-driven animations unavailable */
+@supports not (animation-timeline: view()) {
+  .vexa-ios-stack-card {
+    transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .vexa-ios-stack-card {
     animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .vexa-ios-stack-slot {
+    margin-bottom: 0.65rem;
+    padding-bottom: 0;
+    min-height: 0;
   }
 }
 

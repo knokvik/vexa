@@ -393,7 +393,10 @@ export default function DashboardPage() {
           <p className="mb-3 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Prompts
           </p>
-          <div className="vexa-scroll-hide max-h-[min(58vh,560px)] overflow-y-auto overflow-x-hidden px-1">
+          <div
+            data-prompt-scroll
+            className="vexa-scroll-hide max-h-[min(58vh,560px)] overflow-y-auto overflow-x-hidden px-1 pb-6"
+          >
             <PromptStack
               items={history}
               onSelect={(h) => {
