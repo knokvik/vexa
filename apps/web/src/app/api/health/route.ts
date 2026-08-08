@@ -17,12 +17,17 @@ export async function GET() {
   const circuit = getLlmCircuitStatus();
   const disk = await probeDataWritable();
 
+  const strip = (v?: string | null) =>
+    (v || "")
+      .trim()
+      .replace(/^['"]|['"]$/g, "")
+      .trim();
   const keys = {
     openrouter: cfg.configured,
-    firecrawl: Boolean(process.env.FIRECRAWL_API_KEY?.trim()),
-    exa: Boolean(process.env.EXA_API_KEY?.trim()),
-    brightData: Boolean(process.env.BRIGHT_DATA_API_KEY?.trim()),
-    hunter: Boolean(process.env.HUNTER_API_KEY?.trim()),
+    firecrawl: Boolean(strip(process.env.FIRECRAWL_API_KEY)),
+    exa: Boolean(strip(process.env.EXA_API_KEY)),
+    brightData: Boolean(strip(process.env.BRIGHT_DATA_API_KEY)),
+    hunter: Boolean(strip(process.env.HUNTER_API_KEY)),
   };
 
   const tips: string[] = [];

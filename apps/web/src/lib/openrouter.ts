@@ -139,11 +139,19 @@ function shortModelName(model: string): string {
   return base.replace(/:free$/i, "").replace(/-instruct$/i, "").slice(0, 28);
 }
 
+/** Trim + strip wrapping quotes from Vercel/env pastes */
+function cleanEnv(value?: string | null): string {
+  return (value || "")
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .trim();
+}
+
 export function getOpenRouterConfig() {
-  const apiKey = process.env.OPENROUTER_API_KEY?.trim();
+  const apiKey = cleanEnv(process.env.OPENROUTER_API_KEY);
   const primary =
-    process.env.OPENROUTER_MODEL?.trim() || DEFAULT_POOL[0];
-  const poolRaw = process.env.OPENROUTER_MODELS?.trim();
+    cleanEnv(process.env.OPENROUTER_MODEL) || DEFAULT_POOL[0];
+  const poolRaw = cleanEnv(process.env.OPENROUTER_MODELS);
   const pool = poolRaw
     ? poolRaw.split(",").map((s) => s.trim()).filter(Boolean)
     : DEFAULT_POOL;
@@ -155,11 +163,11 @@ export function getOpenRouterConfig() {
       : `https://${vercel}`
     : "";
   const referer =
-    process.env.OPENROUTER_HTTP_REFERER?.trim() ||
-    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    cleanEnv(process.env.OPENROUTER_HTTP_REFERER) ||
+    cleanEnv(process.env.NEXT_PUBLIC_APP_URL) ||
     vercelUrl ||
     "http://127.0.0.1:5173";
-  const title = process.env.OPENROUTER_APP_TITLE?.trim() || "Vexa";
+  const title = cleanEnv(process.env.OPENROUTER_APP_TITLE) || "Vexa";
   const defaultMaxTokens = Number(
     process.env.OPENROUTER_MAX_TOKENS_DEFAULT || "128"
   );

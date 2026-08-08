@@ -12,7 +12,7 @@ export default function WelcomePage() {
         <ModeToggle />
       </div>
       <div className="container flex max-w-4xl flex-col items-start gap-8 pb-24 pt-12">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-1.5">
           <VexaLogo size="xl" />
           <Badge variant="secondary">AI job copilot</Badge>
         </div>

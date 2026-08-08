@@ -210,15 +210,15 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
             <Link
               href="/"
-              className="vexa-brand flex min-w-0 items-center gap-1.5 text-[18px] leading-none sm:gap-1.5 sm:text-[20px]"
+              className="vexa-brand flex min-w-0 items-center gap-0.5 text-[18px] leading-none sm:gap-0.5 sm:text-[20px]"
             >
-              {/* Larger mark, tight gap, spin animation on */}
+              {/* Tight mark↔wordmark gap (cropped logo + gap-0.5) */}
               <VexaLogo
                 size="xl"
                 animated
                 className="!h-8 !w-8 sm:!h-9 sm:!w-9"
               />
-              <span className="vexa-wordmark truncate font-semibold leading-none tracking-tight">
+              <span className="vexa-wordmark -ml-0.5 truncate font-semibold leading-none tracking-tight">
                 {APP_NAME}
               </span>
             </Link>

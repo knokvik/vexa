@@ -1,23 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Radio, Wifi, WifiOff, AlertTriangle } from "lucide-react";
+import { Loader2, Wifi, WifiOff, AlertTriangle, CircleDashed } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+
+type SvcStatus = "ready" | "degraded" | "offline" | "optional";
 
 type Svc = {
   id: string;
   name: string;
   kind: string;
   free: boolean;
-  status: "ready" | "degraded" | "offline";
+  status: SvcStatus;
   workingOn: string;
 };
 
 export default function ServicesPage() {
   const [services, setServices] = useState<Svc[]>([]);
   const [summary, setSummary] = useState("");
+  const [tips, setTips] = useState<string[]>([]);
+  const [keys, setKeys] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string | "all">("all");
 
@@ -25,11 +29,13 @@ export default function ServicesPage() {
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch("/api/services/status");
+        const res = await fetch("/api/services/status", { cache: "no-store" });
         const data = await res.json();
         if (!cancelled) {
           setServices(data.services || []);
           setSummary(data.summary || "");
+          setTips(Array.isArray(data.tips) ? data.tips : []);
+          setKeys(data.keys || {});
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -43,19 +49,67 @@ export default function ServicesPage() {
     };
   }, []);
 
-  const kinds = ["all", "job_board", "ats", "crawler", "llm", "contacts"];
+  const kinds = [
+    "all",
+    "job_board",
+    "ats",
+    "crawler",
+    "llm",
+    "contacts",
+    "storage",
+  ];
   const shown =
-    filter === "all"
-      ? services
-      : services.filter((s) => s.kind === filter);
+    filter === "all" ? services : services.filter((s) => s.kind === filter);
 
   return (
     <div className="space-y-5">
       <PageHeader
         eyebrow="Live stack"
         title="Services"
-        description="Crawlers, free boards, and LLM status — what is online and what it is working on."
+        description="Crawlers, free boards, and LLM status — green = ready to use."
       />
+
+      {/* Key chips — quick confirmation env is live */}
+      <div className="flex flex-wrap gap-1.5">
+        {(
+          [
+            ["openrouter", "OpenRouter"],
+            ["firecrawl", "Firecrawl"],
+            ["exa", "Exa"],
+            ["hunter", "Hunter"],
+          ] as const
+        ).map(([k, label]) => {
+          const on = Boolean(keys[k]);
+          return (
+            <span
+              key={k}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium",
+                on
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                  : "border-border bg-muted/40 text-muted-foreground"
+              )}
+            >
+              <span
+                className={cn(
+                  "size-1.5 rounded-full",
+                  on ? "bg-emerald-500" : "bg-muted-foreground/40"
+                )}
+              />
+              {label}
+              {on ? " · key" : " · —"}
+            </span>
+          );
+        })}
+      </div>
+
+      {tips.length > 0 && (
+        <ul className="space-y-1 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[12px] text-muted-foreground">
+          {tips.map((t) => (
+            <li key={t}>· {t}</li>
+          ))}
+        </ul>
+      )}
 
       {/* Sub-bar */}
       <div className="flex flex-wrap items-center gap-1.5 rounded-full border bg-muted/40 p-1">
@@ -88,7 +142,10 @@ export default function ServicesPage() {
           {shown.map((s) => (
             <div
               key={s.id}
-              className="rounded-xl border bg-card p-3 shadow-sm"
+              className={cn(
+                "rounded-xl border bg-card p-3 shadow-sm",
+                s.status === "ready" && "border-emerald-500/25"
+              )}
             >
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -106,14 +163,24 @@ export default function ServicesPage() {
               <Badge
                 variant={
                   s.status === "ready"
-                    ? "default"
+                    ? "success"
                     : s.status === "degraded"
-                      ? "secondary"
-                      : "outline"
+                      ? "warning"
+                      : s.status === "optional"
+                        ? "secondary"
+                        : "outline"
                 }
-                className="mt-2 text-[10px]"
+                className={cn(
+                  "mt-2 text-[10px]",
+                  s.status === "ready" &&
+                    "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                )}
               >
-                {s.status}
+                {s.status === "ready"
+                  ? "ready"
+                  : s.status === "optional"
+                    ? "optional"
+                    : s.status}
               </Badge>
             </div>
           ))}
@@ -123,10 +190,12 @@ export default function ServicesPage() {
   );
 }
 
-function StatusIcon({ status }: { status: Svc["status"] }) {
+function StatusIcon({ status }: { status: SvcStatus }) {
   if (status === "ready")
     return <Wifi className="size-4 text-emerald-500" />;
   if (status === "degraded")
     return <AlertTriangle className="size-4 text-amber-500" />;
+  if (status === "optional")
+    return <CircleDashed className="size-4 text-muted-foreground" />;
   return <WifiOff className="size-4 text-muted-foreground" />;
 }
