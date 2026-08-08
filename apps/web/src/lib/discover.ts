@@ -79,6 +79,12 @@ function looksLikeJobPost(title?: string, url?: string): boolean {
   return false;
 }
 
+function fetchTimeoutMs(fallback = 12000): number {
+  // Keep under Vercel function budget when keys are present
+  if (process.env.VERCEL) return Number(process.env.VEXA_FETCH_TIMEOUT_MS || "9000");
+  return Number(process.env.VEXA_FETCH_TIMEOUT_MS || String(fallback));
+}
+
 async function firecrawlSearch(
   query: string,
   limit = 5
@@ -104,6 +110,7 @@ async function firecrawlSearch(
         onlyMainContent: true,
       },
     }),
+    signal: AbortSignal.timeout(fetchTimeoutMs(12000)),
   });
 
   if (!res.ok) {
@@ -166,6 +173,7 @@ async function exaSearch(
       use_autoprompt: true,
       contents: { text: { max_characters: 900 } },
     }),
+    signal: AbortSignal.timeout(fetchTimeoutMs(12000)),
   });
 
   if (!res.ok) {
@@ -556,6 +564,11 @@ export type DiscoverOptions = {
   skipLinkedIn?: boolean;
   /** Max jobs returned after merge */
   limit?: number;
+  /**
+   * Run paid/deep tiers (Firecrawl/Exa + ATS).
+   * Default: true locally; on Vercel only if keys exist and free tier is thin.
+   */
+  deep?: boolean;
 };
 
 /**
@@ -574,18 +587,17 @@ export async function discoverJobs(
   const limit = opts.limit ?? 40;
   const sources: Record<string, { count: number; error?: string }> = {};
   const jobs: JobListing[] = [];
+  const onVercel = Boolean(process.env.VERCEL);
+  const hasPaid =
+    Boolean(env("FIRECRAWL_API_KEY")) || Boolean(env("EXA_API_KEY"));
 
   // Expand user intent (intern / quant / SWE → better search phrases)
   const { query: expandedQuery, expansion } = buildDiscoveryQuery(query);
 
-  // Free boards first ($0), then ATS portals, company careers, LinkedIn last/opt
-  const tiers: DiscoverTier[] = skipLinkedIn
-    ? ["free", "portal", "company"]
-    : ["free", "portal", "company", "linkedin"];
-
-  for (const tier of tiers) {
-    const r = await discoverTier(expandedQuery, tier);
-    sources[tier] = { count: r.jobs.length, error: r.error };
+  // Always free boards first ($0, no keys)
+  {
+    const r = await discoverTier(expandedQuery, "free");
+    sources.free = { count: r.jobs.length, error: r.error };
     if (r.freeSources) {
       for (const [k, v] of Object.entries(r.freeSources)) {
         sources[`free_${k}`] = { count: v.count, error: v.error };
@@ -593,6 +605,38 @@ export async function discoverJobs(
     }
     jobs.push(...r.jobs);
   }
+
+  // On serverless, stop early when free boards already filled results —
+  // avoids Firecrawl/Exa hanging the function past maxDuration.
+  const wantDeep =
+    opts.deep === true ||
+    (!onVercel && opts.deep !== false) ||
+    (onVercel && hasPaid && jobs.length < 8);
+
+  const deepTiers: DiscoverTier[] = wantDeep
+    ? skipLinkedIn
+      ? ["portal", "company"]
+      : ["portal", "company", "linkedin"]
+    : [];
+
+  for (const tier of deepTiers) {
+    const r = await discoverTier(expandedQuery, tier);
+    sources[tier] = { count: r.jobs.length, error: r.error };
+    jobs.push(...r.jobs);
+    // Budget: enough results — don't burn remaining time on more tiers
+    if (onVercel && jobs.length >= limit) break;
+  }
+
+  if (!wantDeep && onVercel) {
+    sources.portal = {
+      count: 0,
+      error: hasPaid
+        ? "skipped (free boards returned enough roles)"
+        : "skipped (set FIRECRAWL_API_KEY / EXA_API_KEY for deep search)",
+    };
+    sources.company = { count: 0, error: "skipped (serverless free-first)" };
+  }
+
   if (skipLinkedIn) {
     sources.linkedin = {
       count: 0,

@@ -194,11 +194,13 @@ async function callOnce(
   const cfg = getOpenRouterConfig();
   if (!cfg.apiKey) throw new Error("OPENROUTER_API_KEY is not set");
 
-  const timeoutMs = Number(process.env.OPENROUTER_TIMEOUT_MS || "6000");
+  // Cap LLM wait so command+job-search still fit Vercel maxDuration
+  const defaultTimeout = process.env.VERCEL ? "8000" : "6000";
+  const timeoutMs = Number(process.env.OPENROUTER_TIMEOUT_MS || defaultTimeout);
   const controller = new AbortController();
   const timer = setTimeout(
     () => controller.abort(),
-    Number.isFinite(timeoutMs) ? timeoutMs : 6000
+    Number.isFinite(timeoutMs) ? timeoutMs : 8000
   );
 
   try {

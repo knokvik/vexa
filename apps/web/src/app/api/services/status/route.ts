@@ -1,5 +1,14 @@
 import { NextResponse } from "next/server";
 import { getLlmRuntimeStatus, getOpenRouterConfig } from "@/lib/openrouter";
+import {
+  getDataRoot,
+  isEphemeralStorage,
+  isServerlessRuntime,
+  probeDataWritable,
+} from "@/lib/data-root";
+import { getAppUrl } from "@/lib/oauth/config";
+
+export const dynamic = "force-dynamic";
 
 /**
  * GET /api/services/status
@@ -8,6 +17,7 @@ import { getLlmRuntimeStatus, getOpenRouterConfig } from "@/lib/openrouter";
 export async function GET() {
   const llm = getLlmRuntimeStatus();
   const cfg = getOpenRouterConfig();
+  const disk = await probeDataWritable();
 
   const services = [
     {
@@ -126,14 +136,56 @@ export async function GET() {
         ? "Domain email search"
         : "Optional HUNTER_API_KEY",
     },
+    {
+      id: "storage",
+      name: "CRM storage",
+      kind: "storage",
+      free: true,
+      status: !disk.ok
+        ? ("offline" as const)
+        : disk.ephemeral
+          ? ("degraded" as const)
+          : ("ready" as const),
+      workingOn: !disk.ok
+        ? `Not writable: ${disk.error || disk.root}`
+        : disk.ephemeral
+          ? `Ephemeral ${disk.root} (resets on cold start)`
+          : disk.root,
+    },
   ];
 
   const ready = services.filter((s) => s.status === "ready").length;
   const offline = services.filter((s) => s.status === "offline").length;
+  const tips: string[] = [];
+  if (!cfg.configured) {
+    tips.push("OPENROUTER_API_KEY missing — AI parse falls back to heuristics.");
+  }
+  if (disk.ephemeral) {
+    tips.push("On Vercel, CRM data lives in /tmp and can reset. Local/dev keeps apps/web/data.");
+  }
+  if (!process.env.FIRECRAWL_API_KEY?.trim() && !process.env.EXA_API_KEY?.trim()) {
+    tips.push("Free boards still work. Firecrawl/Exa unlock deeper company search.");
+  }
 
   return NextResponse.json({
     ok: true,
     summary: `${ready} live · ${offline} offline`,
+    appUrl: getAppUrl(),
+    env: {
+      vercel: Boolean(process.env.VERCEL),
+      serverless: isServerlessRuntime(),
+    },
+    keys: {
+      openrouter: cfg.configured,
+      firecrawl: Boolean(process.env.FIRECRAWL_API_KEY?.trim()),
+      exa: Boolean(process.env.EXA_API_KEY?.trim()),
+    },
+    storage: {
+      root: getDataRoot(),
+      ephemeral: isEphemeralStorage(),
+      writable: disk.ok,
+    },
+    tips,
     services,
     llm,
   });

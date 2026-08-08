@@ -28,6 +28,14 @@ export type FreeSourceResult = {
   durationMs: number;
 };
 
+/** Shorter on Vercel so parallel boards finish under function maxDuration */
+function boardTimeoutMs(): number {
+  if (process.env.VERCEL) {
+    return Number(process.env.VEXA_BOARD_TIMEOUT_MS || "8000");
+  }
+  return Number(process.env.VEXA_BOARD_TIMEOUT_MS || "15000");
+}
+
 function toJob(partial: {
   id: string;
   title: string;
@@ -103,7 +111,7 @@ export async function fetchIndeedRss(
           "Mozilla/5.0 (compatible; VexaBot/0.1; +https://localhost; job-search)",
         Accept: "application/rss+xml, application/xml, text/xml, */*",
       },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(boardTimeoutMs()),
     });
     if (!res.ok) {
       return {
@@ -193,7 +201,7 @@ export async function fetchRemotive(query: string): Promise<FreeSourceResult> {
     const url = `https://remotive.com/api/remote-jobs?search=${encodeURIComponent(q)}&limit=20`;
     const res = await fetch(url, {
       headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(boardTimeoutMs()),
     });
     if (!res.ok) {
       return {
@@ -255,7 +263,7 @@ export async function fetchArbeitnow(query: string): Promise<FreeSourceResult> {
   try {
     const res = await fetch("https://www.arbeitnow.com/api/job-board-api", {
       headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(boardTimeoutMs()),
     });
     if (!res.ok) {
       return {
@@ -340,7 +348,7 @@ export async function fetchJobicy(query: string): Promise<FreeSourceResult> {
     const url = `https://jobicy.com/api/v2/remote-jobs?count=20&tag=${encodeURIComponent(tag)}`;
     const res = await fetch(url, {
       headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(boardTimeoutMs()),
     });
     if (!res.ok) {
       return {
@@ -411,7 +419,7 @@ export async function fetchHimalayas(query: string): Promise<FreeSourceResult> {
   try {
     const res = await fetch("https://himalayas.app/jobs/api?limit=40", {
       headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(boardTimeoutMs()),
     });
     if (!res.ok) {
       return {
@@ -493,7 +501,7 @@ export async function fetchWeWorkRemotely(
           Accept: "application/rss+xml, application/xml, text/xml, */*",
           "User-Agent": "VexaBot/0.1 (job discovery)",
         },
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(boardTimeoutMs()),
       }
     );
     if (!res.ok) {
@@ -581,7 +589,7 @@ export async function fetchRemoteOk(query: string): Promise<FreeSourceResult> {
         Accept: "application/json",
         "User-Agent": "VexaBot/0.1 (job discovery)",
       },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(boardTimeoutMs()),
     });
     if (!res.ok) {
       return {

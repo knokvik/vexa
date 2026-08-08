@@ -4,9 +4,9 @@
  */
 
 import { promises as fs } from "fs";
-import path from "path";
 import { openRouterChat, getLlmCircuitStatus } from "./openrouter";
 import type { Profile } from "@vexa/shared";
+import { dataPath } from "@/lib/data-root";
 
 export type ColdEmailDraft = {
   id: string;
@@ -25,16 +25,16 @@ export type ColdEmailDraft = {
   meta?: Record<string, unknown>;
 };
 
-const DATA_DIR = path.join(process.cwd(), "data", "cold-email");
-const STORE = path.join(DATA_DIR, "drafts.json");
+const DATA_DIR = dataPath("cold-email");
+const STORE = dataPath("cold-email", "drafts.json");
 
 async function ensure() {
   await fs.mkdir(DATA_DIR, { recursive: true });
 }
 
 async function loadAll(): Promise<ColdEmailDraft[]> {
-  await ensure();
   try {
+    await ensure();
     const raw = await fs.readFile(STORE, "utf8");
     return JSON.parse(raw) as ColdEmailDraft[];
   } catch {
@@ -43,8 +43,12 @@ async function loadAll(): Promise<ColdEmailDraft[]> {
 }
 
 async function saveAll(rows: ColdEmailDraft[]) {
-  await ensure();
-  await fs.writeFile(STORE, JSON.stringify(rows.slice(0, 200), null, 2), "utf8");
+  try {
+    await ensure();
+    await fs.writeFile(STORE, JSON.stringify(rows.slice(0, 200), null, 2), "utf8");
+  } catch {
+    /* ephemeral FS — drafts still returned in response */
+  }
 }
 
 function heuristicDraft(input: {

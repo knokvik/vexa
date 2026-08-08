@@ -358,12 +358,17 @@ export async function parseCommandSmart(
     return base;
   }
   if (process.env.VEXA_HEURISTIC_ONLY === "true") return base;
+  // On Vercel, skip LLM parse when heuristics already confident enough —
+  // saves budget for job boards / paid tools.
+  if (process.env.VERCEL && base.confidence >= 0.75 && base.intent !== "unknown") {
+    return base;
+  }
 
   try {
     const result = await openRouterChat({
       role: "parse",
       maxTokens: 200,
-      maxAttempts: 2,
+      maxAttempts: process.env.VERCEL ? 1 : 2,
       temperature: 0.1,
       messages: [
         {

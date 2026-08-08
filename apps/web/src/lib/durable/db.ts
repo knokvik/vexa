@@ -7,7 +7,6 @@
  */
 
 import { promises as fs } from "fs";
-import path from "path";
 import type {
   ApplicationRow,
   DurableSnapshot,
@@ -17,9 +16,10 @@ import type {
   OutcomeRow,
   ScoreRow,
 } from "./types";
+import { dataPath } from "@/lib/data-root";
 
-const DATA_DIR = path.join(process.cwd(), "data", "durable");
-const DB_PATH = path.join(DATA_DIR, "vexa.json");
+const DATA_DIR = dataPath("durable");
+const DB_PATH = dataPath("durable", "vexa.json");
 
 function emptySnapshot(): DurableSnapshot {
   return {
@@ -60,11 +60,15 @@ export async function saveDb(mutator: (db: DurableSnapshot) => void): Promise<Du
     const db = await loadDb();
     mutator(db);
     db.updatedAt = new Date().toISOString();
-    await ensureDir();
-    const tmp = `${DB_PATH}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify(db, null, 2), "utf8");
-    await fs.rename(tmp, DB_PATH);
     cache = db;
+    try {
+      await ensureDir();
+      const tmp = `${DB_PATH}.tmp`;
+      await fs.writeFile(tmp, JSON.stringify(db, null, 2), "utf8");
+      await fs.rename(tmp, DB_PATH);
+    } catch {
+      /* serverless /tmp race — in-memory cache still valid for this instance */
+    }
   });
   await writeQueue;
   return cache!;

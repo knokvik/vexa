@@ -6,6 +6,7 @@
 
 import { promises as fs } from "fs";
 import path from "path";
+import { dataPath, isServerlessRuntime } from "@/lib/data-root";
 
 export type MemoryEventType =
   | "search"
@@ -53,16 +54,13 @@ export type AppMemoryStore = {
   searches: string[];
 };
 
-const DATA_DIR = path.join(process.cwd(), "data", "memory");
-const STORE_PATH = path.join(DATA_DIR, "app-memory.json");
-const MD_PATH = path.join(DATA_DIR, "APP_MEMORY.md");
-const VAULT_MD = path.join(
-  process.cwd(),
-  "..",
-  "..",
-  "memory",
-  "APP_MEMORY.md"
-);
+const DATA_DIR = dataPath("memory");
+const STORE_PATH = dataPath("memory", "app-memory.json");
+const MD_PATH = dataPath("memory", "APP_MEMORY.md");
+// Monorepo Obsidian vault (local only — skipped on serverless)
+const VAULT_MD = isServerlessRuntime()
+  ? ""
+  : path.join(process.cwd(), "..", "..", "memory", "APP_MEMORY.md");
 
 function companyKey(name: string) {
   return name.trim().toLowerCase() || "unknown";
@@ -70,6 +68,7 @@ function companyKey(name: string) {
 
 async function ensureDir() {
   await fs.mkdir(DATA_DIR, { recursive: true });
+  if (!VAULT_MD) return;
   try {
     await fs.mkdir(path.dirname(VAULT_MD), { recursive: true });
   } catch {
@@ -127,7 +126,12 @@ async function writeMarkdown(store: AppMemoryStore) {
     ``,
   ];
   const md = lines.join("\n");
-  await fs.writeFile(MD_PATH, md, "utf8");
+  try {
+    await fs.writeFile(MD_PATH, md, "utf8");
+  } catch {
+    /* ignore */
+  }
+  if (!VAULT_MD) return;
   try {
     await fs.writeFile(VAULT_MD, md, "utf8");
   } catch {
@@ -136,13 +140,17 @@ async function writeMarkdown(store: AppMemoryStore) {
 }
 
 export async function saveAppMemory(store: AppMemoryStore): Promise<void> {
-  await ensureDir();
   store.updatedAt = new Date().toISOString();
   // keep tails bounded
   store.events = store.events.slice(0, 500);
   store.searches = store.searches.slice(0, 100);
-  await fs.writeFile(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
-  await writeMarkdown(store);
+  try {
+    await ensureDir();
+    await fs.writeFile(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
+    await writeMarkdown(store);
+  } catch {
+    /* serverless disk — memory still returned to caller this request */
+  }
 }
 
 function touchCompany(

@@ -6,6 +6,9 @@ import {
   openRouterChat,
 } from "@/lib/openrouter";
 
+export const maxDuration = 30;
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/health/llm
  *  ?status=1  → lightweight runtime snapshot (no LLM call) for title bar

@@ -5,6 +5,9 @@ import { createTask, runStep, completeTask } from "@/lib/task-memory";
 import { rememberEvent } from "@/lib/app-memory";
 import type { JobListing } from "@vexa/shared";
 
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
+
 /**
  * POST /api/jobs/discover  { query?: string }
  * Light discovery via Firecrawl + Exa (few results, cost-aware).

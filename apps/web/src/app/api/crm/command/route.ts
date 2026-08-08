@@ -20,6 +20,10 @@ import {
 import type { JobListing, PipelineStage } from "@vexa/shared";
 import { rememberEvent } from "@/lib/app-memory";
 
+/** Job search + boards need headroom on Hobby/Pro */
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
+
 /**
  * Chatbot-style command bar: understand intent, run the tool, reply.
  */

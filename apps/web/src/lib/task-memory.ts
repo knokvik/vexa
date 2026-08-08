@@ -8,6 +8,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
+import { dataPath, isServerlessRuntime } from "@/lib/data-root";
 
 export type StepStatus = "pending" | "running" | "done" | "failed" | "skipped";
 
@@ -34,8 +35,10 @@ export type TaskRecord = {
   memoryNotes: string[];
 };
 
-const DATA_DIR = path.join(process.cwd(), "data", "tasks");
-const MEMORY_DIR = path.join(process.cwd(), "..", "..", "memory", "tasks");
+const DATA_DIR = dataPath("tasks");
+const MEMORY_DIR = isServerlessRuntime()
+  ? dataPath("tasks-md")
+  : path.join(process.cwd(), "..", "..", "memory", "tasks");
 
 async function ensureDirs() {
   await fs.mkdir(DATA_DIR, { recursive: true });
@@ -81,9 +84,13 @@ export async function loadTask(id: string): Promise<TaskRecord | null> {
 }
 
 export async function saveTask(task: TaskRecord): Promise<void> {
-  await ensureDirs();
   task.updatedAt = new Date().toISOString();
-  await fs.writeFile(taskPath(task.id), JSON.stringify(task, null, 2), "utf8");
+  try {
+    await ensureDirs();
+    await fs.writeFile(taskPath(task.id), JSON.stringify(task, null, 2), "utf8");
+  } catch {
+    /* serverless disk — task still progresses in memory for this request */
+  }
   // Obsidian-friendly dump (best effort)
   try {
     const md = [

@@ -4,7 +4,6 @@
  */
 
 import { promises as fs } from "fs";
-import path from "path";
 import type {
   CrmAction,
   CrmApplication,
@@ -18,9 +17,10 @@ import type {
   CrmUserTask,
   GraphNodeLayout,
 } from "@vexa/shared";
+import { dataPath } from "@/lib/data-root";
 
-const DATA_DIR = path.join(process.cwd(), "data", "durable");
-const CRM_PATH = path.join(DATA_DIR, "crm.json");
+const DATA_DIR = dataPath("durable");
+const CRM_PATH = dataPath("durable", "crm.json");
 
 function empty(): CrmSnapshot {
   return {
@@ -70,11 +70,16 @@ export async function saveCrm(
     db.actions = db.actions.slice(0, 500);
     db.events = db.events.slice(0, 500);
     db.applications = db.applications.slice(0, 1000);
-    await ensureDir();
-    const tmp = `${CRM_PATH}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify(db, null, 2), "utf8");
-    await fs.rename(tmp, CRM_PATH);
     cache = db;
+    // Soft-fail disk: keep memory cache even if FS is read-only
+    try {
+      await ensureDir();
+      const tmp = `${CRM_PATH}.tmp`;
+      await fs.writeFile(tmp, JSON.stringify(db, null, 2), "utf8");
+      await fs.rename(tmp, CRM_PATH);
+    } catch {
+      /* Vercel cold disk / race — cache still holds state for this instance */
+    }
   });
   await writeQueue;
   return cache!;
