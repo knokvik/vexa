@@ -1,6 +1,8 @@
 <div align="center">
 
-<img src="apps/web/public/logo-mark.png" alt="Vexa" width="96" height="96" />
+<!-- Transparent mark: black on light · white on dark (GitHub theme-aware) -->
+<img src="apps/web/public/logo-mark.png#gh-light-mode-only" alt="Vexa" width="96" height="96" />
+<img src="apps/web/public/logo-mark-white.png#gh-dark-mode-only" alt="Vexa" width="96" height="96" />
 
 # **Vexa**
 
