@@ -108,22 +108,18 @@ pnpm dev
 
 ### B) Vercel
 
-1. Import GitHub repo.  
-2. **Root Directory:** leave monorepo root, or set framework to Next and:
+**Full step-by-step:** **[DEPLOY_VERCEL.md](./DEPLOY_VERCEL.md)**
 
-   - Install: `pnpm install`  
-   - Build: `pnpm --filter @vexa/web build`  
-   - Output: Next (framework preset) — set **Root Directory** to `apps/web` **only if** you also configure monorepo install from parent (pnpm workspaces need root install).
+Short version:
 
-   Practical Vercel setup:
+1. Import [github.com/knokvik/vexa](https://github.com/knokvik/vexa)  
+2. Root Directory: **repo root** (not `apps/web`)  
+3. Build: `pnpm install && pnpm --filter @vexa/web build`  
+4. Install: `pnpm install` · Node **20.x**  
+5. Env: `NEXT_PUBLIC_APP_URL` + `APP_URL` = your `https://….vercel.app`  
+6. Deploy → PIN **2580**  
 
-   - Root Directory: **repository root**  
-   - Build Command: `pnpm install && pnpm --filter @vexa/web build`  
-   - Output Directory: leave default for Next  
-   - Install Command: `pnpm install`  
-
-3. Env vars in project settings.  
-4. **Note:** filesystem `data/` is ephemeral on Vercel. CRM data may reset between deploys/cold starts.
+**Note:** filesystem `data/` is ephemeral on Vercel.
 
 ### C) Fly.io
 

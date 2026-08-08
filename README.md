@@ -10,7 +10,7 @@
 
 Command bar · free boards · pipeline tables · tasks · never auto-apply
 
-[Deploy](docs/DEPLOY.md) · [Product](docs/PRODUCT.md) · [Free stack](docs/FREE_STACK.md) · [CRM API](docs/EMAIL_CRM.md)
+[Deploy on Vercel](docs/DEPLOY_VERCEL.md) · [All hosts](docs/DEPLOY.md) · [Product](docs/PRODUCT.md) · [Free stack](docs/FREE_STACK.md)
 
 </div>
 
@@ -91,13 +91,16 @@ pnpm --filter @vexa/web start
 
 ## Deploy online
 
-Full guide: **[docs/DEPLOY.md](docs/DEPLOY.md)**
+| Guide | Platform |
+|-------|----------|
+| **[docs/DEPLOY_VERCEL.md](docs/DEPLOY_VERCEL.md)** | **Vercel (step-by-step)** |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | Railway, Docker, Fly, general |
 
 | Platform | Notes |
 |----------|--------|
-| **Railway** | Recommended for durable `data/` volume |
-| **Vercel** | Fast; filesystem CRM data is ephemeral |
-| **Docker** | See root `Dockerfile` + volume on `apps/web/data` |
+| **Vercel** | Fastest path; CRM JSON on disk is ephemeral |
+| **Railway** | Better if you need durable `data/` volume |
+| **Docker** | See root `Dockerfile` |
 
 Minimal production env:
 
