@@ -209,13 +209,13 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
             <Link
               href="/"
-              className="vexa-brand flex min-w-0 items-center gap-2 text-[17px] leading-none sm:gap-2 sm:text-[18px]"
+              className="vexa-brand flex min-w-0 items-center gap-2.5 text-[18px] leading-none sm:gap-2.5 sm:text-[20px]"
             >
-              {/* Fixed larger mark on mobile — match/1em was too tiny while spinning */}
+              {/* Logo ~same visual weight as “Vexa” wordmark */}
               <VexaLogo
-                size="lg"
+                size="xl"
                 animated={false}
-                className="!h-7 !w-7 sm:!h-6 sm:!w-6"
+                className="!h-[1.35em] !w-[1.35em] sm:!h-[1.4em] sm:!w-[1.4em]"
               />
               <span className="vexa-wordmark truncate font-semibold leading-none tracking-tight">
                 {APP_NAME}
