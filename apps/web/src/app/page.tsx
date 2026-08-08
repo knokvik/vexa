@@ -2,39 +2,31 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowUp,
   Briefcase,
   Loader2,
   Mail,
+  MessageSquare,
   Mic,
   Network,
   Sparkles,
   Table2,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { ContributionGraph } from "@/components/dashboard/ContributionGraph";
-import { HistorySheet } from "@/components/HistorySheet";
+import { TypewriterTitle } from "@/components/TypewriterTitle";
 import { cn } from "@/lib/utils";
 import { useSearchDialog } from "@/components/SearchProvider";
-import { appendLog, reportActivity } from "@/lib/activity-bus";
 import {
-  loadHistory,
-  pushHistory,
-  type HistoryEntry,
-} from "@/lib/command-history";
-
-type CommandResult = {
-  ok?: boolean;
-  intent?: string;
-  reply?: string;
-  working?: string[];
-  result?: Record<string, unknown>;
-  suggestions?: string[];
-  error?: string;
-  navigate?: string;
-};
+  createSession,
+  deleteSession,
+  loadSessions,
+  titleFromPrompt,
+  type ChatSession,
+} from "@/lib/chat-sessions";
 
 const QUICK = [
   {
@@ -43,22 +35,10 @@ const QUICK = [
     icon: Mail,
   },
   { label: "Find jobs", hint: "software engineer remote", icon: Briefcase },
+  { label: "Tables", hint: "What's in my tables?", icon: Table2 },
   { label: "Scrapers", hint: "Service status", icon: Network },
   { label: "Briefing", hint: "Morning briefing", icon: Sparkles },
 ];
-
-function oneLineSummary(data: CommandResult, prompt: string): string {
-  if (data.error) return data.error.slice(0, 100);
-  if (data.reply) return data.reply.slice(0, 200);
-  const w = data.working || [];
-  if (data.intent === "job_search" || data.intent === "start_scrape") {
-    const n = (data.result as { count?: number })?.count;
-    return n != null
-      ? `Found ${n} roles for “${prompt.slice(0, 40)}”`
-      : "Search complete";
-  }
-  return w[w.length - 1] || data.intent || "Done";
-}
 
 type SpeechRec = {
   continuous: boolean;
@@ -77,61 +57,57 @@ type SpeechRecognitionEventLike = {
 };
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { openSearch } = useSearchDialog();
   const [text, setText] = useState("");
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
   const [name, setName] = useState("");
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [sheetEntry, setSheetEntry] = useState<HistoryEntry | null>(null);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  /** Mic armed: click mic → blue ring; hold input → listen */
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [busy, setBusy] = useState(false);
   const [micArmed, setMicArmed] = useState(false);
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState("");
   const [micError, setMicError] = useState("");
-  const [refreshKey, setRefreshKey] = useState(0);
   const [inputFocused, setInputFocused] = useState(false);
-  const [chatReply, setChatReply] = useState<string | null>(null);
-  const [lastJobs, setLastJobs] = useState<
-    Array<{ id: string; title: string; company: string; url?: string }>
-  >([]);
+  const [refreshKey, setRefreshKey] = useState(0);
   const taRef = useRef<HTMLTextAreaElement>(null);
-  const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recRef = useRef<SpeechRec | null>(null);
   const baseTextRef = useRef("");
   const holdingRef = useRef(false);
 
-  useEffect(() => {
-    setHistory(loadHistory());
-    void fetch("/api/profile")
-      .then((r) => r.json())
-      .then((d) => setName(d.profile?.fullName?.split(" ")[0] || ""))
-      .catch(() => null);
-    void fetch("/api/crm/command", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ suggest: "" }),
-    })
-      .then((r) => r.json())
-      .then((d) => setSuggestions(d.suggestions || []))
-      .catch(() => null);
+  const reloadSessions = useCallback(() => {
+    setSessions(loadSessions());
   }, []);
 
-  const onType = useCallback((value: string) => {
-    setText(value);
-    if (suggestTimer.current) clearTimeout(suggestTimer.current);
-    suggestTimer.current = setTimeout(() => {
-      void fetch("/api/crm/command", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ suggest: value }),
-      })
-        .then((r) => r.json())
-        .then((d) => setSuggestions(d.suggestions || []))
-        .catch(() => null);
-    }, 220);
-  }, []);
+  useEffect(() => {
+    reloadSessions();
+    void fetch("/api/profile")
+      .then((r) => r.json())
+      .then((d) => setName(d.profile?.fullName?.split(" ")[0] || "Niraj"))
+      .catch(() => setName("Niraj"));
+  }, [reloadSessions]);
+
+  function openChat(prompt?: string) {
+    const q = (prompt ?? text).trim();
+    setBusy(true);
+    const session = createSession(q ? titleFromPrompt(q) : "New chat");
+    reloadSessions();
+    const url = q
+      ? `/chat?id=${session.id}&q=${encodeURIComponent(q)}`
+      : `/chat?id=${session.id}`;
+    router.push(url);
+  }
+
+  function resumeSession(s: ChatSession) {
+    router.push(`/chat?id=${s.id}`);
+  }
+
+  function removeSession(id: string, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    deleteSession(id);
+    reloadSessions();
+    setRefreshKey((k) => k + 1);
+  }
 
   function getRecognition(): SpeechRec | null {
     if (typeof window === "undefined") return null;
@@ -157,8 +133,8 @@ export default function DashboardPage() {
       stream.getTracks().forEach((t) => t.stop());
       return true;
     } catch (e) {
-      const name = e instanceof DOMException ? e.name : "";
-      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+      const n = e instanceof DOMException ? e.name : "";
+      if (n === "NotAllowedError" || n === "PermissionDeniedError") {
         setMicError("Mic blocked — allow microphone for this site, then retry");
       } else {
         setMicError("Microphone not available");
@@ -171,16 +147,13 @@ export default function DashboardPage() {
     if (!micArmed || listening) return;
     setMicError("");
     holdingRef.current = true;
-
     const ok = await ensureMicPermission();
     if (!ok || !holdingRef.current) return;
-
     const rec = getRecognition();
     if (!rec) {
       setMicError("Speech not supported — type instead (try Chrome)");
       return;
     }
-
     baseTextRef.current = text;
     rec.continuous = true;
     rec.interimResults = true;
@@ -216,11 +189,6 @@ export default function DashboardPage() {
     try {
       rec.start();
       setListening(true);
-      reportActivity({
-        tool: "voice",
-        action: "Listening…",
-        status: "running",
-      });
     } catch {
       setMicError("Could not start speech");
     }
@@ -238,11 +206,6 @@ export default function DashboardPage() {
     setListening(false);
     setInterim("");
     if (baseTextRef.current) setText(baseTextRef.current);
-    reportActivity({
-      tool: "voice",
-      action: "Voice capture ended",
-      status: "done",
-    });
   }
 
   function armMic() {
@@ -255,90 +218,10 @@ export default function DashboardPage() {
     setInterim("");
   }
 
-  async function runCommand(override?: string) {
-    const payload = (override ?? text).trim();
-    if (!payload) return;
-    setBusy(true);
-    reportActivity({
-      tool: "command",
-      action: payload.slice(0, 56),
-      status: "running",
-    });
-    try {
-      const res = await fetch("/api/crm/command", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: payload }),
-      });
-      const data = (await res.json()) as CommandResult;
-      const summary = oneLineSummary(data, payload);
-      setChatReply(data.reply || summary);
-      const jobs =
-        (data.result?.jobs as Array<{
-          id: string;
-          title: string;
-          company: string;
-          url?: string;
-        }>) || [];
-      setLastJobs(jobs);
-      const list = pushHistory({
-        prompt: payload.slice(0, 400),
-        summary,
-        intent: data.intent,
-        ok: !data.error && data.ok !== false,
-        working: data.working,
-        result: data.result as Record<string, unknown> | undefined,
-      });
-      setHistory(list);
-      // Only auto-open sheet for mutations / big results
-      if (
-        list[0] &&
-        ["email_ingest", "add_task", "complete_task", "remove_task", "update_stage"].includes(
-          data.intent || ""
-        )
-      ) {
-        setSheetEntry(list[0]);
-        setSheetOpen(true);
-      }
-      if (data.suggestions) setSuggestions(data.suggestions);
-      reportActivity({
-        tool: "command",
-        action: summary.slice(0, 64),
-        status: data.error ? "error" : "done",
-      });
-      appendLog({
-        kind: data.intent || "command",
-        message: summary,
-        status: data.error ? "error" : "done",
-      });
-      if (
-        [
-          "email_ingest",
-          "add_task",
-          "job_search",
-          "start_scrape",
-          "complete_task",
-          "remove_task",
-          "update_stage",
-        ].includes(data.intent || "")
-      ) {
-        setRefreshKey((k) => k + 1);
-      }
-      if (data.ok !== false) setText("");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed";
-      setChatReply(msg);
-      setHistory(pushHistory({ prompt: payload, summary: msg, ok: false }));
-      reportActivity({ tool: "command", action: msg, status: "error" });
-    } finally {
-      setBusy(false);
-    }
-  }
-
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey && !listening) {
       e.preventDefault();
-      void runCommand();
+      if (text.trim()) openChat();
     }
   }
 
@@ -352,17 +235,14 @@ export default function DashboardPage() {
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
           Vexa
         </p>
-        <h1 className="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
-          {name ? `What next, ${name}?` : "What next?"}
-        </h1>
+        <TypewriterTitle name={name || "Niraj"} />
         <p className="mt-2 text-center text-sm text-muted-foreground">
           {micArmed
             ? "Mic on — hold the input to speak, release when done"
-            : "Tap mic to arm voice · hold input to dictate"}
+            : "Type a message to open chat · sessions resume below"}
         </p>
 
         <div className="mt-8 w-full max-w-2xl space-y-3">
-          {/* Input border only glows while holding (listening) — not when mic merely armed */}
           <div
             className={cn(
               "vexa-glow-border rounded-3xl bg-card shadow-lg ring-1 ring-black/5 dark:ring-white/10",
@@ -391,7 +271,7 @@ export default function DashboardPage() {
                     ref={taRef}
                     value={displayValue}
                     onChange={(e) => {
-                      if (!listening) onType(e.target.value);
+                      if (!listening) setText(e.target.value);
                     }}
                     onFocus={() => setInputFocused(true)}
                     onBlur={() => setInputFocused(false)}
@@ -403,7 +283,7 @@ export default function DashboardPage() {
                     placeholder={
                       micArmed
                         ? "Hold here and speak…"
-                        : "Paste email · start scrape · task: …"
+                        : "Ask about tables · add tasks · find jobs…"
                     }
                     className={cn(
                       "min-h-[52px] w-full resize-none bg-transparent py-2 text-[15px] outline-none placeholder:text-muted-foreground/70",
@@ -413,25 +293,8 @@ export default function DashboardPage() {
                     disabled={busy}
                     readOnly={listening}
                   />
-                  {listening && (
-                    <div className="pointer-events-none absolute bottom-1 right-1 flex items-end gap-0.5 opacity-70">
-                      {[0, 1, 2, 3].map((i) => (
-                        <span
-                          key={i}
-                          className="w-0.5 rounded-full bg-red-500"
-                          style={{
-                            height: 8 + (i % 3) * 5,
-                            animationDelay: `${i * 0.1}s`,
-                            display: "block",
-                            animation: "vexa-wave 0.9s ease-in-out infinite",
-                          }}
-                        />
-                      ))}
-                    </div>
-                  )}
                 </div>
 
-                {/* Mic: red + animated icon when armed; stronger pulse while holding */}
                 <button
                   type="button"
                   className={cn(
@@ -444,11 +307,7 @@ export default function DashboardPage() {
                     listening &&
                       "vexa-mic-pulse border-red-600 bg-red-600 text-white"
                   )}
-                  title={
-                    micArmed
-                      ? "Mic on — hold input to talk (tap mic to turn off)"
-                      : "Turn mic on"
-                  }
+                  title={micArmed ? "Mic on" : "Arm mic"}
                   onClick={(e) => {
                     e.stopPropagation();
                     armMic();
@@ -456,10 +315,7 @@ export default function DashboardPage() {
                   onPointerDown={(e) => e.stopPropagation()}
                 >
                   <Mic
-                    className={cn(
-                      "size-4",
-                      micArmed && "vexa-mic-icon-spin"
-                    )}
+                    className={cn("size-4", micArmed && "vexa-mic-icon-spin")}
                   />
                 </button>
 
@@ -469,7 +325,7 @@ export default function DashboardPage() {
                   disabled={busy || !text.trim()}
                   onClick={(e) => {
                     e.stopPropagation();
-                    void runCommand();
+                    openChat();
                   }}
                   onPointerDown={(e) => e.stopPropagation()}
                 >
@@ -489,7 +345,6 @@ export default function DashboardPage() {
               {listening && (
                 <p className="px-4 pb-2 text-center text-[11px] font-medium text-red-600 dark:text-red-400">
                   Listening… release to stop
-                  {interim ? ` · “${interim.slice(0, 48)}”` : ""}
                 </p>
               )}
               {micError && (
@@ -511,7 +366,11 @@ export default function DashboardPage() {
                     openSearch();
                     return;
                   }
-                  onType(q.hint);
+                  if (q.label === "Tables") {
+                    openChat(q.hint);
+                    return;
+                  }
+                  setText(q.hint);
                   taRef.current?.focus();
                 }}
               >
@@ -524,129 +383,67 @@ export default function DashboardPage() {
               className="inline-flex items-center gap-1 rounded-full border bg-muted/40 px-2.5 py-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               <Table2 className="size-3" />
-              Tables
+              Workspace
             </Link>
           </div>
-
-          {suggestions.length > 0 && (
-            <div className="flex flex-wrap justify-center gap-1.5 px-1">
-              {suggestions.slice(0, 5).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  className="rounded-full border border-dashed px-2.5 py-0.5 text-[11px] text-muted-foreground hover:border-solid hover:bg-muted"
-                  onClick={() => void runCommand(s.replace(/^Find /i, ""))}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Chatbot reply + job results */}
-          {(chatReply || busy) && (
-            <div className="w-full rounded-2xl border bg-card px-4 py-3 text-left shadow-sm">
-              {busy ? (
-                <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" /> Working on it…
-                </p>
-              ) : (
-                <p className="text-sm leading-relaxed">{chatReply}</p>
-              )}
-              {lastJobs.length > 0 && !busy && (
-                <ul className="mt-3 space-y-1.5 border-t pt-2">
-                  {lastJobs.slice(0, 6).map((j) => (
-                    <li
-                      key={j.id}
-                      className="flex items-start justify-between gap-2 text-xs"
-                    >
-                      <span>
-                        <strong>{j.title}</strong>
-                        <span className="text-muted-foreground">
-                          {" "}
-                          · {j.company}
-                        </span>
-                      </span>
-                      {j.url && (
-                        <a
-                          href={j.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="shrink-0 underline"
-                        >
-                          Open
-                        </a>
-                      )}
-                    </li>
-                  ))}
-                  <li>
-                    <Link
-                      href="/jobs"
-                      className="text-xs font-medium underline"
-                    >
-                      View all on Jobs →
-                    </Link>
-                  </li>
-                </ul>
-              )}
-            </div>
-          )}
         </div>
 
         <div className="mt-5 w-full max-w-2xl rounded-2xl border bg-card/60 px-3 py-3">
           <ContributionGraph refreshKey={refreshKey} />
         </div>
 
-        {/* Wide history */}
+        {/* Chat sessions (resume) */}
         <div className="mt-6 w-full max-w-4xl">
-          <p className="mb-2 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            History
-          </p>
-          {history.length === 0 ? (
+          <div className="mb-2 flex items-center justify-between px-1">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Chats
+            </p>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+              onClick={() => openChat()}
+            >
+              <MessageSquare className="size-3" />
+              New chat
+            </button>
+          </div>
+          {sessions.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              Run a command — tap a card for the change sheet.
+              Send a message above — it opens a chat you can resume later.
             </p>
           ) : (
             <ul className="vexa-scroll-hide mx-auto max-h-[min(50vh,480px)] w-full space-y-2 overflow-y-auto sm:max-w-3xl">
-              {history.map((h) => (
-                <li key={h.id}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSheetEntry(h);
-                      setSheetOpen(true);
-                    }}
-                    className={cn(
-                      "w-full rounded-xl border bg-card px-4 py-3.5 text-left shadow-sm transition-all active:scale-[0.995]",
-                      "hover:border-foreground/15 hover:shadow-md",
-                      !h.ok && "border-destructive/30"
-                    )}
-                  >
-                    <div className="flex items-start gap-2.5">
-                      <span
-                        className={cn(
-                          "mt-1.5 size-1.5 shrink-0 rounded-full",
-                          h.ok ? "bg-emerald-500" : "bg-destructive"
-                        )}
-                      />
+              {sessions.map((s) => {
+                const last = s.messages[s.messages.length - 1];
+                const preview =
+                  last?.content ||
+                  s.messages.find((m) => m.role === "user")?.content ||
+                  "Empty chat";
+                return (
+                  <li key={s.id}>
+                    <button
+                      type="button"
+                      onClick={() => resumeSession(s)}
+                      className={cn(
+                        "group flex w-full items-start gap-2.5 rounded-xl border bg-card px-4 py-3.5 text-left shadow-sm transition-all",
+                        "hover:border-foreground/15 hover:shadow-md active:scale-[0.995]"
+                      )}
+                    >
+                      <MessageSquare className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                       <div className="min-w-0 flex-1">
-                        <p className="text-[14px] font-medium leading-snug">
-                          {h.summary}
+                        <p className="truncate text-[14px] font-medium leading-snug">
+                          {s.title}
                         </p>
                         <p className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">
-                          {h.prompt}
+                          {preview}
                         </p>
                         <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                          {h.intent && (
-                            <Badge
-                              variant="secondary"
-                              className="h-4 px-1.5 text-[9px]"
-                            >
-                              {h.intent}
-                            </Badge>
-                          )}
+                          <span className="text-[10px] text-muted-foreground">
+                            {s.messages.length} message
+                            {s.messages.length === 1 ? "" : "s"}
+                          </span>
                           <time className="font-mono text-[9px] text-muted-foreground">
-                            {new Date(h.at).toLocaleString(undefined, {
+                            {new Date(s.updatedAt).toLocaleString(undefined, {
                               month: "short",
                               day: "numeric",
                               hour: "2-digit",
@@ -654,24 +451,26 @@ export default function DashboardPage() {
                             })}
                           </time>
                           <span className="text-[9px] text-muted-foreground">
-                            Tap for details
+                            Tap to resume
                           </span>
                         </div>
                       </div>
-                    </div>
-                  </button>
-                </li>
-              ))}
+                      <button
+                        type="button"
+                        className="rounded-full p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-destructive group-hover:opacity-100"
+                        title="Delete chat"
+                        onClick={(e) => removeSession(s.id, e)}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
       </section>
-
-      <HistorySheet
-        entry={sheetEntry}
-        open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-      />
     </div>
   );
 }
