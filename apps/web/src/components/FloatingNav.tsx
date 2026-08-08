@@ -57,13 +57,13 @@ export function FloatingNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex min-w-[3.1rem] flex-col items-center gap-0.5 rounded-2xl px-2.5 py-1.5 transition-all",
+                "flex min-w-[3.1rem] flex-col items-center gap-0.5 rounded-2xl px-2.5 py-1.5 transition-[background-color,color,transform] duration-200 ease-out",
                 on
                   ? "bg-foreground text-background shadow-sm"
                   : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
               )}
             >
-              <Icon className={cn("size-[18px]", on && "scale-105")} />
+              <Icon className="size-[18px]" />
               <span className="text-[9px] font-medium leading-none">
                 {item.label}
               </span>

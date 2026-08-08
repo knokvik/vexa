@@ -21,6 +21,7 @@ import { HeaderActivityTicker } from "@/components/HeaderActivityTicker";
 import { AutomateDialog } from "@/components/AutomateDialog";
 import { FloatingNav } from "@/components/FloatingNav";
 import { PinGate } from "@/components/PinGate";
+import { PageTransition } from "@/components/PageTransition";
 import { SearchProvider } from "@/components/SearchProvider";
 
 type NavItem = {
@@ -213,7 +214,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               {/* Fixed larger mark on mobile — match/1em was too tiny while spinning */}
               <VexaLogo
                 size="lg"
-                className="!h-7 !w-7 sm:!h-[1.15em] sm:!w-[1.15em]"
+                animated={false}
+                className="!h-7 !w-7 sm:!h-6 sm:!w-6"
               />
               <span className="vexa-wordmark truncate font-semibold leading-none tracking-tight">
                 {APP_NAME}
@@ -242,7 +244,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       </header>
       {/* Extra bottom pad on mobile for floating curved nav */}
       <main className="vexa-shell relative z-0 overflow-x-hidden py-4 pb-28 sm:py-6 sm:pb-12 md:pb-12">
-        {children}
+        <PageTransition>{children}</PageTransition>
       </main>
       <FloatingNav />
     </div>
