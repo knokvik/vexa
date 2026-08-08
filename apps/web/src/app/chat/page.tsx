@@ -26,12 +26,12 @@ import {
   appendMessage,
   createSession,
   getSession,
-  loadSessions,
   titleFromPrompt,
   upsertSession,
   type ChatMsg,
   type ChatSession,
 } from "@/lib/chat-sessions";
+import { pushHistory } from "@/lib/command-history";
 
 type ChatApiResult = {
   ok?: boolean;
@@ -177,6 +177,15 @@ function ChatPageInner() {
         };
         setSession(upsertSession(titled));
       }
+      // One prompt card on home (iOS stack) — not full session list
+      pushHistory({
+        prompt: payload.slice(0, 400),
+        summary: reply.slice(0, 200),
+        intent: intents[0] || "chat",
+        ok: data.ok !== false && !data.error,
+        working: data.working,
+        result: data.result,
+      });
       if (data.suggestions) setSuggestions(data.suggestions);
       reportActivity({
         tool: "chat",
@@ -196,6 +205,11 @@ function ChatPageInner() {
         ok: false,
       });
       if (next) setSession(next);
+      pushHistory({
+        prompt: payload.slice(0, 400),
+        summary: msg,
+        ok: false,
+      });
       reportActivity({ tool: "chat", action: msg, status: "error" });
     } finally {
       setBusy(false);

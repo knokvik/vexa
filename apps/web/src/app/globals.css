@@ -359,3 +359,65 @@
     transform: none;
   }
 }
+
+/**
+ * iPhone Notification Center stack
+ * Cards stick as you scroll; upper ones pile with scale, then leave upward.
+ */
+.vexa-ios-stack {
+  /* room for sticky pile */
+  padding-top: 0.25rem;
+  padding-bottom: 0.5rem;
+}
+
+.vexa-ios-stack-item {
+  position: sticky;
+  margin-bottom: 0.65rem;
+  /* keep scroll height while sticky */
+  padding-bottom: 2px;
+}
+
+.vexa-ios-stack-card {
+  transform-origin: 50% 0%;
+  will-change: transform;
+}
+
+/* Deeper in the pile = slightly smaller (notification behind look) */
+.vexa-ios-stack-item:nth-child(n + 2) .vexa-ios-stack-card {
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(0, 0, 0, 0.03);
+}
+
+.dark .vexa-ios-stack-item:nth-child(n + 2) .vexa-ios-stack-card {
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+/* Animate scale via scroll-driven when supported */
+@supports (animation-timeline: view()) {
+  .vexa-ios-stack-card {
+    animation: vexa-ios-stack-scale linear both;
+    animation-timeline: view();
+    animation-range: entry 0% cover 35%;
+  }
+}
+
+@keyframes vexa-ios-stack-scale {
+  from {
+    transform: scale(0.94);
+    opacity: 0.88;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vexa-ios-stack-card {
+    animation: none !important;
+  }
+}
+

@@ -228,8 +228,8 @@ export function HistorySheet({
             {entry?.prompt}
           </p>
 
-          {/* Green-style change table */}
-          <div className="mt-3 max-h-[min(50vh,360px)] overflow-y-auto px-3 pb-2">
+          {/* Scrollable body when many rows / long steps */}
+          <div className="mt-3 max-h-[min(62vh,480px)] overflow-y-auto overscroll-contain px-3 pb-2">
             <table className="w-full text-left">
               <thead>
                 <tr className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">

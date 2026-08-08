@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -8,24 +8,25 @@ import {
   Briefcase,
   Loader2,
   Mail,
-  MessageSquare,
   Mic,
   Network,
   Sparkles,
   Table2,
-  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ContributionGraph } from "@/components/dashboard/ContributionGraph";
 import { TypewriterTitle } from "@/components/TypewriterTitle";
+import { PromptStack } from "@/components/PromptStack";
+import { HistorySheet } from "@/components/HistorySheet";
 import { cn } from "@/lib/utils";
 import { useSearchDialog } from "@/components/SearchProvider";
 import {
+  loadHistory,
+  type HistoryEntry,
+} from "@/lib/command-history";
+import {
   createSession,
-  deleteSession,
-  loadSessions,
   titleFromPrompt,
-  type ChatSession,
 } from "@/lib/chat-sessions";
 
 const QUICK = [
@@ -61,7 +62,9 @@ export default function DashboardPage() {
   const { openSearch } = useSearchDialog();
   const [text, setText] = useState("");
   const [name, setName] = useState("");
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [sheetEntry, setSheetEntry] = useState<HistoryEntry | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [micArmed, setMicArmed] = useState(false);
   const [listening, setListening] = useState(false);
@@ -74,39 +77,32 @@ export default function DashboardPage() {
   const baseTextRef = useRef("");
   const holdingRef = useRef(false);
 
-  const reloadSessions = useCallback(() => {
-    setSessions(loadSessions());
-  }, []);
-
   useEffect(() => {
-    reloadSessions();
+    setHistory(loadHistory());
     void fetch("/api/profile")
       .then((r) => r.json())
       .then((d) => setName(d.profile?.fullName?.split(" ")[0] || "Niraj"))
       .catch(() => setName("Niraj"));
-  }, [reloadSessions]);
 
+    // Refresh prompt list when returning from chat
+    const onFocus = () => {
+      setHistory(loadHistory());
+      setRefreshKey((k) => k + 1);
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") onFocus();
+    });
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
+  /** New message → open chat; each reply is also saved as a prompt card */
   function openChat(prompt?: string) {
     const q = (prompt ?? text).trim();
+    if (!q) return;
     setBusy(true);
-    const session = createSession(q ? titleFromPrompt(q) : "New chat");
-    reloadSessions();
-    const url = q
-      ? `/chat?id=${session.id}&q=${encodeURIComponent(q)}`
-      : `/chat?id=${session.id}`;
-    router.push(url);
-  }
-
-  function resumeSession(s: ChatSession) {
-    router.push(`/chat?id=${s.id}`);
-  }
-
-  function removeSession(id: string, e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    deleteSession(id);
-    reloadSessions();
-    setRefreshKey((k) => k + 1);
+    const session = createSession(titleFromPrompt(q));
+    router.push(`/chat?id=${session.id}&q=${encodeURIComponent(q)}`);
   }
 
   function getRecognition(): SpeechRec | null {
@@ -239,7 +235,7 @@ export default function DashboardPage() {
         <p className="mt-2 text-center text-sm text-muted-foreground">
           {micArmed
             ? "Mic on — hold the input to speak, release when done"
-            : "Type a message to open chat · sessions resume below"}
+            : "Type to chat · prompts stack below · tap for details"}
         </p>
 
         <div className="mt-8 w-full max-w-2xl space-y-3">
@@ -392,85 +388,28 @@ export default function DashboardPage() {
           <ContributionGraph refreshKey={refreshKey} />
         </div>
 
-        {/* Chat sessions (resume) */}
-        <div className="mt-6 w-full max-w-4xl">
-          <div className="mb-2 flex items-center justify-between px-1">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Chats
-            </p>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
-              onClick={() => openChat()}
-            >
-              <MessageSquare className="size-3" />
-              New chat
-            </button>
+        {/* iPhone-style stacked prompt list */}
+        <div className="mt-6 w-full max-w-xl">
+          <p className="mb-3 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Prompts
+          </p>
+          <div className="vexa-scroll-hide max-h-[min(58vh,560px)] overflow-y-auto overflow-x-hidden px-1">
+            <PromptStack
+              items={history}
+              onSelect={(h) => {
+                setSheetEntry(h);
+                setSheetOpen(true);
+              }}
+            />
           </div>
-          {sessions.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              Send a message above — it opens a chat you can resume later.
-            </p>
-          ) : (
-            <ul className="vexa-scroll-hide mx-auto max-h-[min(50vh,480px)] w-full space-y-2 overflow-y-auto sm:max-w-3xl">
-              {sessions.map((s) => {
-                const last = s.messages[s.messages.length - 1];
-                const preview =
-                  last?.content ||
-                  s.messages.find((m) => m.role === "user")?.content ||
-                  "Empty chat";
-                return (
-                  <li key={s.id}>
-                    <button
-                      type="button"
-                      onClick={() => resumeSession(s)}
-                      className={cn(
-                        "group flex w-full items-start gap-2.5 rounded-xl border bg-card px-4 py-3.5 text-left shadow-sm transition-all",
-                        "hover:border-foreground/15 hover:shadow-md active:scale-[0.995]"
-                      )}
-                    >
-                      <MessageSquare className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[14px] font-medium leading-snug">
-                          {s.title}
-                        </p>
-                        <p className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">
-                          {preview}
-                        </p>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                          <span className="text-[10px] text-muted-foreground">
-                            {s.messages.length} message
-                            {s.messages.length === 1 ? "" : "s"}
-                          </span>
-                          <time className="font-mono text-[9px] text-muted-foreground">
-                            {new Date(s.updatedAt).toLocaleString(undefined, {
-                              month: "short",
-                              day: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </time>
-                          <span className="text-[9px] text-muted-foreground">
-                            Tap to resume
-                          </span>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="rounded-full p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-destructive group-hover:opacity-100"
-                        title="Delete chat"
-                        onClick={(e) => removeSession(s.id, e)}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
         </div>
       </section>
+
+      <HistorySheet
+        entry={sheetEntry}
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+      />
     </div>
   );
 }
