@@ -85,18 +85,27 @@ export async function GET() {
       t.kind !== "job"
   );
 
-  // Contribution heatmap: full year (52w) so months fill the bar
+  // Contribution heatmap: full year using local dates (avoid UTC day shift)
+  const localKey = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
   const days: Record<string, number> = {};
   const today = new Date();
   today.setHours(12, 0, 0, 0);
   for (let i = 0; i < 365; i++) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
-    days[d.toISOString().slice(0, 10)] = 0;
+    days[localKey(d)] = 0;
   }
   const bump = (iso?: string, n = 1) => {
     if (!iso) return;
-    const key = iso.slice(0, 10);
+    // Prefer local calendar day from ISO
+    const parsed = new Date(iso);
+    if (Number.isNaN(parsed.getTime())) return;
+    const key = localKey(parsed);
     if (key in days) days[key] += n;
   };
   for (const e of db.emails) bump(e.receivedAt, 2);

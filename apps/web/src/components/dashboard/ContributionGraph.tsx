@@ -13,12 +13,13 @@ function level(count: number) {
   return 4;
 }
 
+/** High-contrast cells so empty boxes always show (light + dark) */
 const LEVEL_CLS = [
-  "bg-muted",
-  "bg-emerald-900/70",
-  "bg-emerald-700",
-  "bg-emerald-500",
-  "bg-emerald-400",
+  "bg-zinc-200 dark:bg-zinc-800 border border-zinc-300/80 dark:border-zinc-700",
+  "bg-emerald-200 dark:bg-emerald-950 border border-emerald-300 dark:border-emerald-900",
+  "bg-emerald-400 dark:bg-emerald-800 border border-emerald-500 dark:border-emerald-700",
+  "bg-emerald-500 dark:bg-emerald-600 border border-emerald-600 dark:border-emerald-500",
+  "bg-emerald-600 dark:bg-emerald-400 border border-emerald-700 dark:border-emerald-300",
 ];
 
 const MONTHS = [
@@ -36,8 +37,29 @@ const MONTHS = [
   "Dec",
 ];
 
+function localDateKey(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Always build a full ~1 year grid client-side so boxes never disappear */
+function buildYearDays(counts: Map<string, number>): Day[] {
+  const out: Day[] = [];
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  for (let i = 364; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const key = localDateKey(d);
+    out.push({ date: key, count: counts.get(key) || 0 });
+  }
+  return out;
+}
+
 /**
- * GitHub-style year heatmap — padded weeks, scroll months, clickable days.
+ * GitHub-style contribution heatmap — every day is a visible box.
  */
 export function ContributionGraph({
   refreshKey = 0,
@@ -46,37 +68,48 @@ export function ContributionGraph({
   refreshKey?: number;
   className?: string;
 }) {
-  const [days, setDays] = useState<Day[]>([]);
-  const [total, setTotal] = useState(0);
+  const [countMap, setCountMap] = useState<Map<string, number>>(new Map());
   const [selected, setSelected] = useState<Day | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     void fetch("/api/crm/tables")
       .then((r) => r.json())
       .then((d) => {
-        const c = (d.contribution || []) as Day[];
-        setDays(c);
-        setTotal(c.reduce((s, x) => s + x.count, 0));
+        if (cancelled) return;
+        const map = new Map<string, number>();
+        for (const row of (d.contribution || []) as Day[]) {
+          if (row?.date) map.set(row.date.slice(0, 10), Number(row.count) || 0);
+        }
+        setCountMap(map);
+        setLoaded(true);
       })
-      .catch(() => null);
+      .catch(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [refreshKey]);
 
-  const { cells, weeks, monthMarks } = useMemo(() => {
-    if (!days.length) {
-      return { cells: [] as Array<Day | null>, weeks: 53, monthMarks: [] as { label: string; week: number }[] };
-    }
-    // Align first day to Sunday (GitHub layout)
+  const days = useMemo(() => buildYearDays(countMap), [countMap]);
+  const total = useMemo(
+    () => days.reduce((s, d) => s + d.count, 0),
+    [days]
+  );
+
+  const { weeks, monthMarks } = useMemo(() => {
+    // Pad so first day aligns to Sunday
     const first = new Date(days[0].date + "T12:00:00");
-    const pad = first.getDay(); // 0=Sun
+    const pad = first.getDay();
     const padded: Array<Day | null> = [
       ...Array.from({ length: pad }, () => null),
       ...days,
     ];
-    // Pad end to complete last week
     while (padded.length % 7 !== 0) padded.push(null);
-    const w = padded.length / 7;
+    const weekCount = padded.length / 7;
 
-    // Month labels at first week of each month
     const marks: { label: string; week: number }[] = [];
     let lastM = -1;
     for (let i = 0; i < padded.length; i++) {
@@ -88,106 +121,116 @@ export function ContributionGraph({
         lastM = m;
       }
     }
-    return { cells: padded, weeks: w, monthMarks: marks };
+    return { weeks: weekCount, monthMarks: marks, padded };
   }, [days]);
 
-  const CELL = 11;
-  const GAP = 2;
+  // Column-major weeks: each week is 7 cells Sun→Sat
+  const weekColumns = useMemo(() => {
+    const first = new Date(days[0].date + "T12:00:00");
+    const pad = first.getDay();
+    const padded: Array<Day | null> = [
+      ...Array.from({ length: pad }, () => null),
+      ...days,
+    ];
+    while (padded.length % 7 !== 0) padded.push(null);
+    const cols: Array<Array<Day | null>> = [];
+    for (let w = 0; w < padded.length / 7; w++) {
+      cols.push(padded.slice(w * 7, w * 7 + 7));
+    }
+    return cols;
+  }, [days]);
+
+  const CELL = 12;
 
   return (
     <div className={cn("w-full", className)}>
-      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <p className="text-[11px] text-muted-foreground">
-          <span className="font-mono font-medium text-foreground">{total}</span>{" "}
-          contributions in the last year
+          <span className="font-mono font-medium text-foreground">
+            {loaded ? total : "—"}
+          </span>{" "}
+          contributions · last year
         </p>
-        <div className="flex items-center gap-0.5 text-[9px] text-muted-foreground">
-          <span className="mr-0.5">Less</span>
+        <div className="flex items-center gap-1 text-[9px] text-muted-foreground">
+          <span>Less</span>
           {LEVEL_CLS.map((c, i) => (
-            <span key={i} className={cn("size-2.5 rounded-[1px]", c)} />
+            <span
+              key={i}
+              className={cn("inline-block size-2.5 shrink-0 rounded-[2px]", c)}
+            />
           ))}
-          <span className="ml-0.5">More</span>
+          <span>More</span>
         </div>
       </div>
 
-      <div className="overflow-x-auto pb-1">
-        <div
-          className="relative"
-          style={{
-            width: weeks * (CELL + GAP),
-            minWidth: "100%",
-          }}
-        >
+      <div className="w-full overflow-x-auto pb-1">
+        <div className="inline-block min-w-full">
           {/* Month labels */}
           <div
-            className="relative mb-1 h-3 text-[9px] text-muted-foreground"
-            style={{ width: weeks * (CELL + GAP) }}
+            className="relative mb-1 ml-5 h-3.5 text-[9px] text-muted-foreground"
+            style={{ width: weeks * (CELL + 3) }}
           >
             {monthMarks.map((m) => (
               <span
                 key={`${m.label}-${m.week}`}
-                className="absolute top-0"
-                style={{ left: m.week * (CELL + GAP) }}
+                className="absolute top-0 whitespace-nowrap"
+                style={{ left: m.week * (CELL + 3) }}
               >
                 {m.label}
               </span>
             ))}
           </div>
 
-          <div className="flex gap-1">
-            {/* Weekday labels */}
+          <div className="flex items-start gap-1">
             <div
-              className="flex flex-col justify-between py-[1px] pr-1 text-[8px] text-muted-foreground"
-              style={{ height: 7 * (CELL + GAP) - GAP }}
+              className="flex w-4 shrink-0 flex-col justify-between text-[8px] leading-none text-muted-foreground"
+              style={{ height: 7 * (CELL + 3) - 3 }}
             >
-              <span />
+              <span className="invisible">S</span>
               <span>M</span>
-              <span />
+              <span className="invisible">T</span>
               <span>W</span>
-              <span />
+              <span className="invisible">T</span>
               <span>F</span>
-              <span />
+              <span className="invisible">S</span>
             </div>
 
-            <div
-              className="grid"
-              style={{
-                gridTemplateRows: `repeat(7, ${CELL}px)`,
-                gridTemplateColumns: `repeat(${weeks}, ${CELL}px)`,
-                gap: GAP,
-                gridAutoFlow: "column",
-              }}
-            >
-              {cells.map((d, i) => {
-                if (!d) {
-                  return (
-                    <div
-                      key={`pad-${i}`}
-                      className="rounded-[2px] bg-transparent"
-                      style={{ width: CELL, height: CELL }}
-                    />
-                  );
-                }
-                const on = selected?.date === d.date;
-                return (
-                  <button
-                    key={d.date}
-                    type="button"
-                    title={`${d.date}: ${d.count} actions`}
-                    onClick={() =>
-                      setSelected((s) =>
-                        s?.date === d.date ? null : d
-                      )
+            {/* Weeks as columns — always renders full boxes */}
+            <div className="flex gap-[3px]">
+              {weekColumns.map((col, wi) => (
+                <div key={wi} className="flex flex-col gap-[3px]">
+                  {col.map((d, di) => {
+                    if (!d) {
+                      return (
+                        <div
+                          key={`pad-${wi}-${di}`}
+                          className="shrink-0 rounded-[2px] bg-transparent"
+                          style={{ width: CELL, height: CELL }}
+                        />
+                      );
                     }
-                    className={cn(
-                      "rounded-[2px] transition-transform hover:scale-110 hover:ring-1 hover:ring-foreground/30",
-                      LEVEL_CLS[level(d.count)],
-                      on && "ring-2 ring-foreground"
-                    )}
-                    style={{ width: CELL, height: CELL }}
-                  />
-                );
-              })}
+                    const on = selected?.date === d.date;
+                    return (
+                      <button
+                        key={d.date}
+                        type="button"
+                        title={`${d.date}: ${d.count} action${d.count === 1 ? "" : "s"}`}
+                        onClick={() =>
+                          setSelected((s) =>
+                            s?.date === d.date ? null : d
+                          )
+                        }
+                        className={cn(
+                          "block shrink-0 rounded-[2px] p-0 transition-transform hover:scale-110 hover:ring-1 hover:ring-foreground/40",
+                          LEVEL_CLS[level(d.count)],
+                          on && "ring-2 ring-foreground ring-offset-1 ring-offset-background"
+                        )}
+                        style={{ width: CELL, height: CELL, minWidth: CELL, minHeight: CELL }}
+                      />
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -199,7 +242,7 @@ export function ContributionGraph({
           {" · "}
           {selected.count} action{selected.count === 1 ? "" : "s"}
           {selected.count === 0
-            ? " — quiet day"
+            ? " — quiet day (box still counts as a day)"
             : " — emails, apps, tasks, events"}
         </p>
       )}
