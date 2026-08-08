@@ -10,9 +10,9 @@ import { ThemeProvider } from "@/components/theme-provider";
  * Loaded via `geist` package (next/font local). Used for body, nav, buttons, headings.
  */
 export const metadata: Metadata = {
-  title: "Vexa — Apply smarter. Stay human.",
+  title: "Vexa — Email-native job CRM",
   description:
-    "AI job application copilot: humanized resumes, ATS scores, shortlist prediction, one-tap apply.",
+    "Drop emails, grow your graph, find roles. Never auto-apply. Track pipeline, people, and tasks.",
   icons: {
     icon: [
       { url: "/favicon.ico?v=3", sizes: "48x48" },

@@ -11,8 +11,10 @@ import type {
 import {
   VOLUME_CAPS,
   SHORTLIST_THRESHOLDS,
+  APPLY_TIERS,
   PLATFORM_CATALOG,
   PLATFORM_SYNC_MAX_AGE_HOURS,
+  classifyApplySurface,
 } from "@vexa/shared";
 import { buildTailoredResume } from "@vexa/intelligence";
 import {
@@ -31,6 +33,16 @@ import { isOAuthProvider } from "./oauth/config";
 import { fetchRealPlatformProfile } from "./oauth/fetch-profile";
 import { createTask, runStep, completeTask } from "./task-memory";
 import { llmHumanize, llmShortlistNote } from "./llm-pipeline";
+import { rememberEvent } from "./app-memory";
+import { normalizeJobFields } from "./job-normalize";
+import { buildFormFill } from "./form-fill";
+import * as durable from "./durable/bridge";
+import {
+  addOutcome,
+  listOutcomes,
+  computeWeeklyStats,
+  type OutcomeEvent,
+} from "./durable/db";
 
 function defaultConnections(): PlatformConnection[] {
   return PLATFORM_CATALOG.map((p) => ({
@@ -41,7 +53,8 @@ function defaultConnections(): PlatformConnection[] {
 }
 
 /**
- * In-memory store for MVP. Swap for Postgres without changing API shapes.
+ * App store — in-memory for speed, durable JSON tables for jobs/drafts/outcomes.
+ * Phase 1: survives restarts for jobs, applications, scores, outcomes, profile, resumes.
  */
 class MemoryStore {
   profile: Profile = structuredClone(DEMO_PROFILE);
@@ -53,6 +66,41 @@ class MemoryStore {
   lastSyncReport: SyncRunReport | null = null;
   /** When true (default), prep/apply waits for daily platform sync. */
   syncBeforeApply = true;
+  private hydrated = false;
+  private hydratePromise: Promise<void> | null = null;
+
+  /** Load durable state once (jobs/drafts/profile/resumes). */
+  async ensureHydrated() {
+    if (this.hydrated) return;
+    if (this.hydratePromise) return this.hydratePromise;
+    this.hydratePromise = (async () => {
+      try {
+        const data = await durable.hydrateFromDisk();
+        if (data.jobs.length) {
+          // Prefer durable jobs; keep demos only if disk empty
+          this.jobs = data.jobs;
+        } else {
+          // Seed durable with demo jobs on first run
+          await durable.persistJobs(this.jobs);
+        }
+        if (data.drafts.length) {
+          this.drafts = data.drafts;
+        }
+        if (data.resumes.length) {
+          this.resumes = data.resumes;
+        }
+        if (data.profile) {
+          this.profile = data.profile;
+        } else {
+          await durable.persistProfile(this.profile);
+        }
+      } catch {
+        /* keep demos */
+      }
+      this.hydrated = true;
+    })();
+    return this.hydratePromise;
+  }
 
   getProfile() {
     return this.profile;
@@ -65,6 +113,7 @@ class MemoryStore {
       id: this.profile.id,
       userId: this.profile.userId,
     };
+    void durable.persistProfile(this.profile);
     return this.profile;
   }
 
@@ -77,14 +126,39 @@ class MemoryStore {
   }
 
   upsertJobs(incoming: JobListing[]) {
+    // Data-cleaning pass: real company names, not portal brands (Ashby/ZipRecruiter/…)
     for (const job of incoming) {
+      const cleaned = normalizeJobFields({
+        company: job.company,
+        title: job.title,
+        externalUrl: job.externalUrl,
+      });
+      job.company = cleaned.company;
+      job.title = cleaned.title;
+
       const idx = this.jobs.findIndex(
         (j) => j.externalUrl === job.externalUrl || j.id === job.id
       );
       if (idx >= 0) this.jobs[idx] = job;
       else this.jobs.unshift(job);
     }
+    void durable.persistJobs(this.jobs);
     return this.jobs;
+  }
+
+  /** Re-run cleaning over stored jobs (dashboard top companies fix). */
+  reprocessJobCompanies() {
+    for (const job of this.jobs) {
+      const cleaned = normalizeJobFields({
+        company: job.company,
+        title: job.title,
+        externalUrl: job.externalUrl,
+      });
+      job.company = cleaned.company;
+      job.title = cleaned.title;
+    }
+    void durable.persistJobs(this.jobs);
+    return this.jobs.length;
   }
 
   listPlatforms() {
@@ -347,14 +421,20 @@ class MemoryStore {
   draftsTodayCount() {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
-    return this.drafts.filter((d) => new Date(d.createdAt) >= start).length;
+    return this.drafts.filter(
+      (d) =>
+        new Date(d.createdAt) >= start &&
+        d.status !== "failed" &&
+        // duplicate is a soft return on an existing draft — don't double-count
+        d.status !== "duplicate"
+    ).length;
   }
 
   canCreateDraft(): { ok: boolean; reason?: string } {
     if (this.draftsTodayCount() >= VOLUME_CAPS.maxDraftsPerDay) {
       return {
         ok: false,
-        reason: `Daily quality cap reached (${VOLUME_CAPS.maxDraftsPerDay}/day).`,
+        reason: `Daily quality cap reached (${VOLUME_CAPS.maxDraftsPerDay}/day). Quality over spray — open Inbox to apply packages, or continue tomorrow.`,
       };
     }
     return { ok: true };
@@ -363,6 +443,7 @@ class MemoryStore {
   async prepareDraft(
     jobId: string
   ): Promise<ApplicationDraft | { error: string; taskId?: string }> {
+    await this.ensureHydrated();
     await this.ensureFreshPlatformData("pre_apply");
 
     const cap = this.canCreateDraft();
@@ -388,9 +469,13 @@ class MemoryStore {
     );
 
     try {
+      const preferredTemplate =
+        this.profile.templatePriorities?.[0] || "tpl-harvard";
       const built = await runStep(task, "tailor", async () => ({
-        output: buildTailoredResume(this.profile, job),
-        notes: "local tailor+ATS+shortlist",
+        output: buildTailoredResume(this.profile, job, {
+          templateId: preferredTemplate,
+        }),
+        notes: `local tailor+ATS template=${preferredTemplate}`,
       }));
 
       const human = await runStep(task, "humanize", async () => {
@@ -432,41 +517,89 @@ class MemoryStore {
         };
         this.resumes.unshift(resume);
 
-        const status =
-          built.shortlistProbability < SHORTLIST_THRESHOLDS.reviewBelow
-            ? "requires_review"
-            : "ready";
+        // Risk tiers: LinkedIn/Indeed always review; direct ATS uses thresholds
+        const surface = classifyApplySurface(job.externalUrl);
+        const p = built.shortlistProbability;
+        let status: ApplicationDraft["status"] = "ready";
+        if (surface === "linkedin" || surface === "indeed") {
+          // Tier 3 — draft only, you always submit; force review flag
+          status = "requires_review";
+        } else if (p < APPLY_TIERS.tier2Min) {
+          status = "requires_review";
+        } else if (p < APPLY_TIERS.tier1Min) {
+          status =
+            p < SHORTLIST_THRESHOLDS.reviewBelow ? "requires_review" : "ready";
+        } else {
+          // Tier 1 high confidence direct ATS — still never auto-submits
+          status = "ready";
+        }
+
+        // Invention / parse errors → force review
+        if (
+          built.inventionFlags?.some((i) => i.severity === "error") ||
+          built.parseSafety?.ok === false
+        ) {
+          status = "requires_review";
+        }
+
+        const coverLetter = `Hi ${job.company} team — ${recommendation}`;
+        // ATS form-fill engine: Greenhouse / Lever / Ashby / generic field answers + eval
+        const form = buildFormFill({
+          profile: this.profile,
+          job,
+          coverLetter,
+          resumePlainText: plainText,
+        });
+
+        // Weak open-ended form answers → force review
+        if (form.eval.avgOverall < 60 || form.eval.reviewCount >= 4) {
+          status = "requires_review";
+        }
 
         const d: ApplicationDraft = {
           id: `app_${Date.now()}`,
           userId: DEMO_USER_ID,
           jobListingId: jobId,
           resumeVersionId: resumeId,
-          coverLetter: `Hi ${job.company} team — ${recommendation}`,
+          coverLetter,
           status,
           matchScore: built.atsScore,
           shortlistProbability: built.shortlistProbability,
           shortlistFactors: built.shortlistFactors,
-          filledFormData: {
-            name: this.profile.fullName,
-            email: "alex@example.com",
-            phone: this.profile.phone ?? "",
-            linkedin: this.profile.linkedinUrl ?? "",
-            github: this.profile.githubUrl ?? "",
-            location: this.profile.location ?? "",
-            resume_text: plainText.slice(0, 4000),
-            cover_letter: "",
-          },
+          filledFormData: form.filledFormData,
+          formAnswers: form.answers,
+          formEval: form.eval,
+          formSurface: form.surface,
           retryCount: 0,
           createdAt: now,
           updatedAt: now,
         };
-        d.filledFormData!.cover_letter = d.coverLetter ?? "";
         this.drafts.unshift(d);
+        await durable.persistDraft(d, {
+          template_used: built.templateId,
+          tier: durable.tierForJob(job.externalUrl, built.shortlistProbability),
+        });
+        await durable.persistJob(job, "drafted");
+        await durable.persistResumes(this.resumes);
         return { output: d, notes: `task=${task.id}` };
       });
 
       await completeTask(task, "done");
+      // Persist company + draft into long-lived app memory vault
+      await rememberEvent({
+        type: "draft_prepared",
+        company: job.company,
+        title: job.title,
+        jobId: job.id,
+        url: job.externalUrl,
+        status: draft.status,
+        note: `draft=${draft.id} ats=${draft.matchScore}`,
+        meta: {
+          draftId: draft.id,
+          shortlist: draft.shortlistProbability,
+          taskId: task.id,
+        },
+      });
       return draft;
     } catch (e) {
       await completeTask(task, "failed");
@@ -492,6 +625,9 @@ class MemoryStore {
     d.submittedAt = new Date().toISOString();
     d.updatedAt = d.submittedAt;
     d.confirmationId = confirmationId ?? `manual_${Date.now()}`;
+    void durable.persistDraft(d);
+    const job = this.getJob(d.jobListingId);
+    if (job) void durable.persistJob(job, "submitted");
     return d;
   }
 
@@ -502,7 +638,39 @@ class MemoryStore {
     d.errorMessage = message;
     d.updatedAt = new Date().toISOString();
     d.retryCount += 1;
+    void durable.persistDraft(d);
     return d;
+  }
+
+  /** Phase 1 — log funnel outcome for learning */
+  async logOutcome(
+    applicationId: string,
+    event: OutcomeEvent,
+    note?: string,
+    eventAt?: string
+  ) {
+    await this.ensureHydrated();
+    const d = this.getDraft(applicationId);
+    if (!d) return { error: "Application not found" as const };
+    const row = {
+      id: `out_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      application_id: applicationId,
+      event,
+      event_at: eventAt || new Date().toISOString(),
+      note: note || "",
+    };
+    await addOutcome(row);
+    return { ok: true as const, outcome: row };
+  }
+
+  async listOutcomes(applicationId?: string) {
+    await this.ensureHydrated();
+    return listOutcomes(applicationId);
+  }
+
+  async weeklyStats() {
+    await this.ensureHydrated();
+    return computeWeeklyStats();
   }
 
   async getApplyPackage(id: string): Promise<ApplyPackage | null> {
@@ -512,37 +680,188 @@ class MemoryStore {
     const job = this.getJob(d.jobListingId);
     if (!job) return null;
     const resume = this.resumes.find((r) => r.id === d.resumeVersionId);
+
+    // Rebuild form answers if missing (older drafts) or enrich package
+    let formAnswers = d.formAnswers;
+    let formEval = d.formEval;
+    let formSurface = d.formSurface;
+    let filled = d.filledFormData ?? {};
+    if (!formAnswers?.length || !Object.keys(filled).length) {
+      const form = buildFormFill({
+        profile: this.profile,
+        job,
+        coverLetter: d.coverLetter,
+        resumePlainText: resume?.plainText,
+      });
+      formAnswers = form.answers;
+      formEval = form.eval;
+      formSurface = form.surface;
+      filled = { ...form.filledFormData, ...filled };
+      d.filledFormData = filled;
+      d.formAnswers = formAnswers;
+      d.formEval = formEval;
+      d.formSurface = formSurface;
+      void durable.persistDraft(d);
+    }
+
     return {
       applicationId: d.id,
       jobUrl: job.externalUrl,
       jobTitle: job.title,
       company: job.company,
-      filledFormData: d.filledFormData ?? {},
+      filledFormData: filled,
+      formAnswers,
+      formEval,
+      formSurface,
       resumePlainText: resume?.plainText,
       coverLetter: d.coverLetter,
       autoSubmit: false,
     };
   }
 
+  /** Regenerate form answers for a draft (profile/job updated). */
+  async rebuildFormAnswers(applicationId: string) {
+    await this.ensureHydrated();
+    const d = this.getDraft(applicationId);
+    if (!d) return { error: "Not found" as const };
+    const job = this.getJob(d.jobListingId);
+    if (!job) return { error: "Job not found" as const };
+    const resume = this.resumes.find((r) => r.id === d.resumeVersionId);
+    const form = buildFormFill({
+      profile: this.profile,
+      job,
+      coverLetter: d.coverLetter,
+      resumePlainText: resume?.plainText,
+    });
+    d.filledFormData = form.filledFormData;
+    d.formAnswers = form.answers;
+    d.formEval = form.eval;
+    d.formSurface = form.surface;
+    d.updatedAt = new Date().toISOString();
+    void durable.persistDraft(d);
+    return { ok: true as const, draft: d, form };
+  }
+
   listResumes() {
     return this.resumes;
   }
 
-  async startAutomation() {
+  addResume(resume: ResumeVersion) {
+    this.resumes.unshift(resume);
+    void durable.persistResumes(this.resumes);
+    return resume;
+  }
+
+  /**
+   * Batch prepare drafts — ATS-first, undrafted only, quality caps.
+   * Never auto-submits. LinkedIn surfaces still become requires_review only.
+   */
+  async startAutomation(opts?: {
+    maxDrafts?: number;
+    preferDirectAts?: boolean;
+    jobIds?: string[];
+  }) {
     this.automationEnabled = true;
+    await this.ensureHydrated();
     const sync = await this.ensureFreshPlatformData("pre_automation");
-    const results = [];
-    for (const job of this.jobs.slice(0, VOLUME_CAPS.maxDraftsPerDay)) {
-      const r = await this.prepareDraft(job.id);
-      results.push(r);
+    const max = Math.min(
+      opts?.maxDrafts ?? VOLUME_CAPS.maxDraftsPerDay,
+      VOLUME_CAPS.maxDraftsPerDay
+    );
+    const preferAts = opts?.preferDirectAts !== false;
+
+    const draftedJobIds = new Set(
+      this.drafts
+        .filter((d) => !["failed", "expired"].includes(d.status))
+        .map((d) => d.jobListingId)
+    );
+
+    let candidates = opts?.jobIds?.length
+      ? opts.jobIds
+          .map((id) => this.getJob(id))
+          .filter((j): j is JobListing => !!j)
+      : [...this.jobs];
+
+    // Skip already drafted
+    candidates = candidates.filter((j) => !draftedJobIds.has(j.id));
+
+    if (preferAts) {
+      const rank = (url: string) => {
+        const s = classifyApplySurface(url);
+        if (s === "direct_ats") return 0;
+        if (s === "other") return 1;
+        if (s === "unknown") return 2;
+        // linkedin / indeed last — still draftable as review-only
+        return 3;
+      };
+      candidates.sort(
+        (a, b) => rank(a.externalUrl) - rank(b.externalUrl)
+      );
     }
-    return { enabled: true, results, sync };
+
+    const results: Array<
+      ApplicationDraft | { error: string; taskId?: string; jobId?: string }
+    > = [];
+    let prepared = 0;
+    for (const job of candidates) {
+      if (prepared >= max) break;
+      const cap = this.canCreateDraft();
+      if (!cap.ok) {
+        results.push({ error: cap.reason!, jobId: job.id });
+        break;
+      }
+      const r = await this.prepareDraft(job.id);
+      if (!("error" in r) && r.status !== "duplicate") {
+        prepared += 1;
+      }
+      results.push(
+        "error" in r ? { ...r, jobId: job.id } : r
+      );
+    }
+
+    await rememberEvent({
+      type: "search",
+      query: "automation:batch_draft",
+      note: `prepared=${prepared} attempted=${results.length}`,
+      meta: { prepared, preferAts, max },
+    });
+
+    return { enabled: true, results, sync, prepared };
+  }
+
+  /** Jobs not yet drafted, ranked for apply-friendly surfaces */
+  listUndraftedJobs(limit = 20) {
+    const drafted = new Set(
+      this.drafts
+        .filter((d) => !["failed", "expired"].includes(d.status))
+        .map((d) => d.jobListingId)
+    );
+    return this.jobs
+      .filter((j) => !drafted.has(j.id))
+      .sort((a, b) => {
+        const ra = classifyApplySurface(a.externalUrl);
+        const rb = classifyApplySurface(b.externalUrl);
+        const score = (s: string) =>
+          s === "direct_ats" ? 0 : s === "other" ? 1 : 2;
+        return score(ra) - score(rb);
+      })
+      .slice(0, limit);
   }
 }
 
 const globalForStore = globalThis as unknown as { __vexaStore?: MemoryStore };
 
-export const store = globalForStore.__vexaStore ?? new MemoryStore();
-if (process.env.NODE_ENV !== "production") {
-  globalForStore.__vexaStore = store;
+/** Reuse data across HMR but always pick up latest class methods in dev. */
+function getStore(): MemoryStore {
+  if (globalForStore.__vexaStore) {
+    if (process.env.NODE_ENV !== "production") {
+      Object.setPrototypeOf(globalForStore.__vexaStore, MemoryStore.prototype);
+    }
+    return globalForStore.__vexaStore;
+  }
+  const s = new MemoryStore();
+  globalForStore.__vexaStore = s;
+  return s;
 }
+
+export const store = getStore();

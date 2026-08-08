@@ -5,64 +5,50 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Briefcase,
-  FileText,
   Home,
   Inbox,
-  Link2,
-  Mail,
-  Menu,
-  Search,
+  Radio,
   Settings,
-  UserRound,
+  Table2,
 } from "lucide-react";
 import { APP_NAME } from "@vexa/shared";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/mode-toggle";
 import { MemoryVaultButton } from "@/components/MemoryVaultButton";
 import { VexaLogo } from "@/components/VexaLogo";
 import { ModelStatusBadge } from "@/components/ModelStatusBadge";
+import { HeaderActivityTicker } from "@/components/HeaderActivityTicker";
 import { AutomateDialog } from "@/components/AutomateDialog";
-import { SearchProvider, useSearchDialog } from "@/components/SearchProvider";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import { Separator } from "@/components/ui/separator";
+import { FloatingNav } from "@/components/FloatingNav";
+import { PinGate } from "@/components/PinGate";
+import { SearchProvider } from "@/components/SearchProvider";
 
 type NavItem = {
   href: string;
   label: string;
   icon: typeof Home;
   badgeKey: string | null;
-  /** Opens search dialog instead of navigating */
-  searchDialog?: boolean;
 };
 
 const NAV: NavItem[] = [
   { href: "/", label: "Home", icon: Home, badgeKey: null },
+  { href: "/workspace", label: "Tables", icon: Table2, badgeKey: null },
   { href: "/jobs", label: "Jobs", icon: Briefcase, badgeKey: null },
-  {
-    href: "#search",
-    label: "Search",
-    icon: Search,
-    badgeKey: null,
-    searchDialog: true,
-  },
-  { href: "/inbox", label: "Inbox", icon: Inbox, badgeKey: "inbox" },
-  { href: "/outreach", label: "Outreach", icon: Mail, badgeKey: "outreach" },
-  { href: "/onboarding", label: "Profile", icon: UserRound, badgeKey: null },
-  { href: "/connections", label: "Connect", icon: Link2, badgeKey: null },
-  { href: "/resumes", label: "Resumes", icon: FileText, badgeKey: null },
+  { href: "/timeline", label: "Timeline", icon: Inbox, badgeKey: null },
+  { href: "/services", label: "Services", icon: Radio, badgeKey: null },
   { href: "/settings", label: "Settings", icon: Settings, badgeKey: null },
 ];
 
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   if (href.startsWith("#")) return false;
+  if (href === "/settings") {
+    return (
+      pathname.startsWith("/settings") ||
+      pathname.startsWith("/resumes") ||
+      pathname.startsWith("/onboarding")
+    );
+  }
   return pathname.startsWith(href);
 }
 
@@ -77,8 +63,6 @@ function NavLinks({
   vertical?: boolean;
   badges: Record<string, number>;
 }) {
-  const { openSearch } = useSearchDialog();
-
   if (vertical) {
     return (
       <nav className="flex flex-col gap-1">
@@ -89,23 +73,6 @@ function NavLinks({
             item.badgeKey && badges[item.badgeKey]
               ? badges[item.badgeKey]
               : 0;
-
-          if (item.searchDialog) {
-            return (
-              <button
-                key={item.href}
-                type="button"
-                onClick={() => {
-                  openSearch();
-                  onNavigate?.();
-                }}
-                className="relative inline-flex w-full items-center gap-1.5 rounded-2xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                {item.label}
-              </button>
-            );
-          }
 
           return (
             <Link
@@ -149,8 +116,17 @@ function NavLinks({
             : "max-w-9 gap-0 bg-transparent px-0 text-muted-foreground hover:text-foreground"
         );
 
-        const inner = (
-          <>
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            title={item.label}
+            className={className}
+            style={{
+              minWidth: active ? undefined : 36,
+              width: active ? "auto" : 36,
+            }}
+          >
             <span className="relative inline-flex shrink-0">
               <Icon className="h-[18px] w-[18px]" />
               {count > 0 && !active && (
@@ -176,36 +152,6 @@ function NavLinks({
               </span>
             )}
             <span className="sr-only">{item.label}</span>
-          </>
-        );
-
-        if (item.searchDialog) {
-          return (
-            <button
-              key={item.href}
-              type="button"
-              title={item.label}
-              onClick={() => openSearch()}
-              className={className}
-              style={{ minWidth: 36, width: 36 }}
-            >
-              {inner}
-            </button>
-          );
-        }
-
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            title={item.label}
-            className={className}
-            style={{
-              minWidth: active ? undefined : 36,
-              width: active ? "auto" : 36,
-            }}
-          >
-            {inner}
           </Link>
         );
       })}
@@ -217,11 +163,6 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isMarketing = pathname === "/welcome";
   const [badges, setBadges] = useState<Record<string, number>>({});
-  const [navOpen, setNavOpen] = useState(false);
-
-  useEffect(() => {
-    setNavOpen(false);
-  }, [pathname]);
 
   useEffect(() => {
     let cancelled = false;
@@ -263,45 +204,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen overflow-x-hidden bg-background">
       <header className="sticky top-0 z-40 border-b border-border/40 bg-background/90 pt-2 backdrop-blur-xl supports-[backdrop-filter]:bg-background/75 sm:pt-3">
-        <div className="container relative flex h-12 items-center justify-between gap-2 pb-2 sm:h-14 sm:gap-3">
+        <div className="vexa-shell relative flex h-12 items-center justify-between gap-2 pb-2 sm:h-14 sm:gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
-            <Sheet open={navOpen} onOpenChange={setNavOpen}>
-              <SheetTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-9 w-9 shrink-0 rounded-full md:hidden"
-                  aria-label="Open menu"
-                >
-                  <Menu className="h-4 w-4" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent
-                side="left"
-                className="w-[min(100vw-2rem,18rem)] p-5"
-              >
-                <SheetHeader>
-                  <SheetTitle className="flex items-center gap-1.5 text-[17px] leading-none">
-                    <VexaLogo size="match" animated={false} />
-                    <span className="font-semibold tracking-tight">
-                      {APP_NAME}
-                    </span>
-                  </SheetTitle>
-                </SheetHeader>
-                <Separator className="my-4" />
-                <NavLinks
-                  pathname={pathname}
-                  vertical
-                  badges={badges}
-                  onNavigate={() => setNavOpen(false)}
-                />
-              </SheetContent>
-            </Sheet>
-
             <Link
               href="/"
               className="vexa-brand flex min-w-0 items-center gap-1.5 text-[17px] leading-none sm:text-[18px]"
-              onClick={() => setNavOpen(false)}
             >
               <VexaLogo size="match" />
               <span className="vexa-wordmark truncate font-semibold leading-none tracking-tight">
@@ -316,7 +223,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             </div>
           </div>
 
-          <div className="relative z-10 flex shrink-0 items-center justify-end">
+          <div className="relative z-10 flex shrink-0 items-center justify-end gap-1.5">
+            <HeaderActivityTicker />
             <div className="flex h-9 items-center gap-0 rounded-full bg-muted/80 p-0.5 shadow-sm ring-1 ring-black/5 dark:ring-white/10 sm:h-10 sm:gap-0.5 sm:p-1">
               <ModelStatusBadge />
               <ModeToggle />
@@ -328,9 +236,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      <main className="container relative z-0 max-w-full overflow-x-hidden py-4 pb-20 sm:py-6 sm:pb-12">
+      {/* Extra bottom pad on mobile for floating curved nav */}
+      <main className="vexa-shell relative z-0 overflow-x-hidden py-4 pb-28 sm:py-6 sm:pb-12 md:pb-12">
         {children}
       </main>
+      <FloatingNav />
     </div>
   );
 }
@@ -338,7 +248,9 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <SearchProvider>
-      <AppShellInner>{children}</AppShellInner>
+      <PinGate>
+        <AppShellInner>{children}</AppShellInner>
+      </PinGate>
     </SearchProvider>
   );
 }

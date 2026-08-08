@@ -282,13 +282,21 @@ export async function scanJobIntel(
 
   const sourcesUsed: string[] = [];
 
-  // Parallel research: people + projects + company engineering
-  const [peopleExa, projectsExa, engFc, engExa] = await Promise.all([
+  // Parallel research: people + recruiters/HR + projects + company engineering
+  const [peopleExa, hrExa, projectsExa, engFc, engExa] = await Promise.all([
     exaSearch(
       `${company} ${title.split(/[,(]/)[0]} engineer OR developer experience portfolio OR "worked on" OR github`,
       5
     ).then((r) => {
       if (r.length) sourcesUsed.push("exa:people");
+      return r;
+    }),
+    // Talent / recruiting / hiring manager — cold email targets (not auto-messaged)
+    exaSearch(
+      `${company} (recruiter OR "talent acquisition" OR "technical recruiter" OR "hiring manager" OR "people partner") ${title.split(/[,(]/)[0]}`,
+      5
+    ).then((r) => {
+      if (r.length) sourcesUsed.push("exa:recruiters");
       return r;
     }),
     exaSearch(
@@ -309,6 +317,12 @@ export async function scanJobIntel(
   ]);
 
   const people = parsePeople([
+    ...hrExa.map((r) => ({
+      ...r,
+      title: r.title?.includes("Recruit") || r.title?.includes("Talent")
+        ? r.title
+        : `${r.title || "Recruiter"} — Talent`,
+    })),
     ...peopleExa,
     ...engExa.filter((r) => /linkedin\.com\/in\//i.test(r.url || "")),
   ]);

@@ -3,6 +3,7 @@ import { APP_NAME, APP_TAGLINE } from "@vexa/shared";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ModeToggle } from "@/components/mode-toggle";
+import { VexaLogo } from "@/components/VexaLogo";
 
 export default function WelcomePage() {
   return (
@@ -11,7 +12,10 @@ export default function WelcomePage() {
         <ModeToggle />
       </div>
       <div className="container flex max-w-4xl flex-col items-start gap-8 pb-24 pt-12">
-        <Badge variant="secondary">AI job copilot</Badge>
+        <div className="flex items-center gap-4">
+          <VexaLogo size="xl" />
+          <Badge variant="secondary">AI job copilot</Badge>
+        </div>
         <div className="space-y-3">
           <h1 className="text-5xl font-semibold tracking-tight">{APP_NAME}</h1>
           <p className="text-xl text-muted-foreground">{APP_TAGLINE}</p>

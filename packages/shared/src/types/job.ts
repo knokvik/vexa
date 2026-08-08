@@ -6,6 +6,12 @@ export type JobSource =
   | "lever"
   | "remoteok"
   | "adzuna"
+  | "indeed"
+  | "remotive"
+  | "arbeitnow"
+  | "jobicy"
+  | "himalayas"
+  | "weworkremotely"
   | "manual"
   | "demo";
 

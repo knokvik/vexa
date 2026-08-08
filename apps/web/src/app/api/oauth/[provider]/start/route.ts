@@ -25,13 +25,16 @@ export async function GET(
   const provider = raw as OAuthProviderId;
   const cfg = getOAuthProvider(provider);
   if (!cfg) {
-    return NextResponse.json(
-      {
-        error: `${provider} OAuth is not configured`,
-        hint: `Add ${provider.toUpperCase()}_CLIENT_ID and _CLIENT_SECRET to .env.local (see docs/OAUTH_SETUP.md)`,
-      },
-      { status: 503 }
+    // Send user back to Connect UI with a clear setup message (not raw JSON)
+    const app =
+      process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
+      "http://127.0.0.1:5173";
+    const dest = new URL("/connections", app);
+    dest.searchParams.set(
+      "oauth_error",
+      `${provider}_not_configured — add ${provider.toUpperCase()}_CLIENT_ID and ${provider.toUpperCase()}_CLIENT_SECRET to apps/web/.env.local, restart dev server, then Connect again`
     );
+    return NextResponse.redirect(dest.toString());
   }
 
   const nonce = randomString(16);
@@ -60,6 +63,10 @@ export async function GET(
 
   if (provider === "google") {
     url.searchParams.set("access_type", "offline");
+    url.searchParams.set("prompt", "consent");
+  }
+  if (provider === "linkedin") {
+    // Force permission screen so user always sees "Allow Vexa to connect"
     url.searchParams.set("prompt", "consent");
   }
   if (provider === "github") {

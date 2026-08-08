@@ -1,41 +1,49 @@
-# Product context (compressed)
+# Product context — Email-native Job Search CRM
 
 ## Pitch
 
-Other tools spray generic applications and get you blacklisted. Vexa builds a unique, human-like resume for every job, predicts shortlisting odds, and gets you one click from submit — while keeping you in control.
+Email is the universal API of job searching. Vexa is a **relationship graph** that tracks companies, contacts, jobs, and applications from your inbox — not a brittle auto-apply bot.
+
+## Hard rules
+
+1. **Never auto-apply.** You click Submit on the employer site.
+2. **Never auto-send** cold email without explicit confirm (copy-to-Gmail is default).
+3. **No resume tailor engine** as a product path — upload your materials; apply strategically with graph intel.
+4. Server packages that request `autoSubmit: true` are rejected.
 
 ## Canonical flow
 
 ```
-Signup → Profile (skills, experience, interests, template priority)
-  → Start automation
-  → Job discovery (APIs + Firecrawl/Exa; public listings only)
-  → Parse → unified Job schema
-  → Resume generate (template priority)
-  → Humanize → ATS optimize → Shortlist predict
-  → Draft Inbox
-  → Extension prefills in user's browser
-  → User clicks Submit
-  → Track + notify on errors
+Drop / sync job emails
+  → Classify (confirmation, rejection, screen, technical, onsite, offer, outreach…)
+  → Extract company, contact, job, dates
+  → Upsert graph nodes + edges
+  → Advance application pipeline stage
+  → Action engine (follow-ups, prep, offer timers)
+  → Pipeline / Network / Timeline UI
+  → You apply & reply with context
 ```
 
-## Hard rule
+## Surfaces
 
-Server never auto-submits applications. Submission = user device + user click.
+| Route | Role |
+|-------|------|
+| `/pipeline` | Kanban + email drop |
+| `/network` | Who do I know at X? |
+| `/timeline` | Activity feed |
+| Find jobs | Optional free-board discovery |
+| `/outreach` | Cold email drafts (human send) |
+| `/resumes` | Profile + upload only |
 
-## Platform connections + daily sync
+## Why this wins over auto-apply
 
-Users connect LinkedIn, X, GitHub, Google, Indeed, Wellfound (demo OAuth now; real OAuth later).
+| Auto-apply | Email-native CRM |
+|------------|------------------|
+| Breaks on DOM changes | Email formats stable for decades |
+| ToS / ban risk | Read + paste / OAuth read-only |
+| Blind volume | Full audit trail + warm paths |
+| Resume spam | Strategic manual apply |
 
-- Per-platform **daily sync** toggle
-- Global **sync before draft/apply** (default on)
-- Stale if last sync &gt; 24h → auto-refresh before resume generation or apply package
-- Sync is **read profile data only** — never used to auto-submit on those platforms
+## Optional discovery
 
-## Moats
-
-1. Humanization engine
-2. Shortlisting predictor (factor breakdown)
-3. Template priority
-4. Full loop with error transparency
-5. Account safety (volume caps, health monitor)
+Free boards (Remotive, Jobicy, Himalayas, WWR, …) still help find roles. They do **not** auto-submit.

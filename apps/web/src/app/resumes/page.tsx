@@ -1,24 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import type { ResumeVersion } from "@vexa/shared";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Profile } from "@vexa/shared";
 import {
-  Check,
   CheckCircle2,
-  Copy,
   Download,
-  Eye,
+  ExternalLink,
   FileText,
   Loader2,
-  Sparkles,
-  X,
-  XCircle,
+  Trash2,
+  Upload,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
-import { ScoreBar } from "@/components/score-bar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Card,
   CardContent,
@@ -26,727 +25,637 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import {
-  openResumePdfPreview,
-  resumePreviewBlobUrl,
-} from "@/lib/resume-pdf";
 
-type TemplateCard = {
+/**
+ * Official Ivy / peer career-center resume templates.
+ * Cards open the school source — no AI generation.
+ */
+const IVY_TEMPLATES = [
+  {
+    id: "harvard",
+    name: "Harvard",
+    short: "Bullet-point resume",
+    description:
+      "MCS bullet-point resume template — single column, ATS-friendly.",
+    source: "Harvard FAS · Mignone Center for Career Success",
+    url: "https://careerservices.fas.harvard.edu/resources/bullet-point-resume-template/",
+    accent: "bg-red-700",
+  },
+  {
+    id: "princeton",
+    name: "Princeton",
+    short: "Resumes & letters",
+    description:
+      "Career Development resume and cover letter guides & samples.",
+    source: "Princeton Center for Career Development",
+    url: "https://careerdevelopment.princeton.edu/guides/resumes-cover-letters-and-more",
+    accent: "bg-orange-700",
+  },
+  {
+    id: "yale",
+    name: "Yale",
+    short: "Resumes & CVs",
+    description:
+      "Office of Career Strategy resume, CV, and cover letter resources.",
+    source: "Yale OCS",
+    url: "https://ocs.yale.edu/channels/resumes-cvs-cover-letters/",
+    accent: "bg-blue-900",
+  },
+  {
+    id: "mit",
+    name: "MIT",
+    short: "STEM resume",
+    description: "CAPD resume guide for technical / STEM roles.",
+    source: "MIT CAPD",
+    url: "https://capd.mit.edu/resources/resume/",
+    accent: "bg-zinc-800",
+  },
+  {
+    id: "penn",
+    name: "Penn",
+    short: "Career services",
+    description: "Penn Career Services resume and application materials.",
+    source: "University of Pennsylvania Career Services",
+    url: "https://careerservices.upenn.edu/resumes/",
+    accent: "bg-blue-800",
+  },
+  {
+    id: "stanford",
+    name: "Stanford",
+    short: "Resume toolkit",
+    description: "BEAM resume and cover letter resources.",
+    source: "Stanford BEAM",
+    url: "https://beam.stanford.edu/jobs-internships/resumes-cover-letters",
+    accent: "bg-red-800",
+  },
+] as const;
+
+type UploadMeta = {
   id: string;
-  name: string;
-  category: string;
-  atsFriendlyScore: number;
-  description?: string;
-  styleSource?: string;
-  bestFor?: string;
-  fontFamily?: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  uploadedAt: string;
 };
 
-type ChecklistItem = {
-  id: string;
-  label: string;
-  ok: boolean;
-  detail?: string;
-};
+function formatBytes(n: number) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
 
-type Preview = {
-  templateId: string;
-  templateName: string;
-  plainText: string;
-  atsScore: number;
-  formatScore: number;
-  humanizedScore?: number;
-  checklist: ChecklistItem[];
-};
+/**
+ * Combined Profile + Resume page.
+ * Profile fields for automation · upload resume as-is · official Ivy templates.
+ */
+export default function ProfileResumePage() {
+  const inputRef = useRef<HTMLInputElement>(null);
 
-type JobLite = {
-  id: string;
-  company?: string;
-  title?: string;
-  externalUrl?: string;
-};
+  // Profile
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
 
-type ResumeRow = ResumeVersion & {
-  job?: JobLite | null;
-  applicationId?: string | null;
-  applicationStatus?: string | null;
-  shortlistProbability?: number | null;
-};
-
-type DraftPackage = {
-  applicationId: string;
-  status: string;
-  shortlistProbability?: number;
-  matchScore?: number;
-  createdAt?: string;
-  job?: JobLite | null;
-  resume?: {
-    id: string;
-    templateId: string;
-    plainText: string;
-    atsScore?: number;
-    humanizedScore?: number;
-    content?: ResumeVersion["content"];
-    createdAt?: string;
-  } | null;
-};
-
-export default function ResumesPage() {
-  const [resumes, setResumes] = useState<ResumeRow[]>([]);
-  const [draftPackages, setDraftPackages] = useState<DraftPackage[]>([]);
-  const [templates, setTemplates] = useState<TemplateCard[]>([]);
-  const [preferred, setPreferred] = useState("tpl-harvard");
-  const [preview, setPreview] = useState<Preview | null>(null);
+  // Resume upload
+  const [meta, setMeta] = useState<UploadMeta | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
-  const [tab, setTab] = useState<"base" | "jobs">("base");
-  const [pdf, setPdf] = useState<{
-    title: string;
-    subtitle?: string;
-    plainText: string;
-    fontFamily?: string;
-    url: string;
-  } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const isPdf = useMemo(() => {
+    if (!meta) return false;
+    return (
+      meta.mimeType.includes("pdf") ||
+      meta.originalName.toLowerCase().endsWith(".pdf")
+    );
+  }, [meta]);
+
+  const isText = useMemo(() => {
+    if (!meta) return false;
+    return (
+      meta.mimeType.includes("text") ||
+      meta.originalName.toLowerCase().endsWith(".txt")
+    );
+  }, [meta]);
+
+  const loadResume = useCallback(async () => {
     try {
-      const res = await fetch("/api/resumes");
+      const res = await fetch("/api/resumes/upload");
       const data = await res.json();
-      setResumes(data.resumes ?? []);
-      setDraftPackages(data.draftPackages ?? []);
-      setTemplates(data.templates ?? []);
-      setPreferred(data.preferredTemplateId ?? "tpl-harvard");
-      setPreview(data.preview ?? null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-    } finally {
-      setLoading(false);
+      if (data.resume) {
+        setMeta(data.resume);
+        setPreviewUrl(`/api/resumes/upload/file?t=${Date.now()}`);
+      } else {
+        setMeta(null);
+        setPreviewUrl(null);
+      }
+    } catch {
+      /* ignore */
     }
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    setLoading(true);
+    Promise.all([
+      fetch("/api/profile")
+        .then((r) => r.json())
+        .then((d) => setProfile(d.profile)),
+      loadResume(),
+    ]).finally(() => setLoading(false));
+  }, [loadResume]);
 
-  // Revoke blob when closing PDF modal
-  useEffect(() => {
-    return () => {
-      if (pdf?.url) URL.revokeObjectURL(pdf.url);
-    };
-  }, [pdf?.url]);
-
-  const preferredTpl = useMemo(
-    () => templates.find((t) => t.id === preferred),
-    [templates, preferred]
-  );
-
-  const jobResumes = useMemo(() => {
-    // Prefer draft packages with resume text (job-tailored)
-    const fromDrafts = draftPackages.filter((d) => d.resume?.plainText);
-    if (fromDrafts.length) return fromDrafts;
-    // Fallback: resume versions that have a job
-    return resumes
-      .filter((r) => r.jobListingId || r.job)
-      .map((r) => ({
-        applicationId: r.applicationId || r.id,
-        status: r.applicationStatus || "saved",
-        shortlistProbability: r.shortlistProbability ?? undefined,
-        matchScore: r.atsScore,
-        createdAt: r.createdAt,
-        job: r.job,
-        resume: {
-          id: r.id,
-          templateId: r.templateId,
-          plainText: r.plainText,
-          atsScore: r.atsScore,
-          humanizedScore: r.humanizedScore,
-          content: r.content,
-          createdAt: r.createdAt,
-        },
-      })) as DraftPackage[];
-  }, [draftPackages, resumes]);
-
-  async function selectTemplate(templateId: string) {
-    setBusy(true);
+  async function saveProfile() {
+    if (!profile) return;
+    setSaving(true);
+    setMessage("");
     setError("");
     try {
-      const res = await fetch("/api/resumes", {
-        method: "POST",
+      const res = await fetch("/api/profile", {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "setTemplate", templateId }),
+        body: JSON.stringify(profile),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed");
-      setPreferred(data.preferredTemplateId);
-      setPreview(data.preview);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Template update failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function saveBaseVersion() {
-    setBusy(true);
-    setError("");
-    try {
-      const res = await fetch("/api/resumes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "buildBase",
-          templateId: preferred,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed");
-      await load();
+      setProfile(data.profile);
+      setMessage("Profile saved — automation can use these details.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
-      setBusy(false);
+      setSaving(false);
     }
   }
 
-  function copyPlain(text?: string) {
-    const t = text || preview?.plainText;
-    if (!t) return;
-    void navigator.clipboard.writeText(t).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    });
+  async function uploadFile(file: File) {
+    setUploading(true);
+    setError("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/resumes/upload", {
+        method: "POST",
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      setMeta(data.resume);
+      setPreviewUrl(`/api/resumes/upload/file?t=${Date.now()}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
   }
 
-  function downloadTxt(text?: string, label?: string) {
-    const t = text || preview?.plainText;
-    if (!t) return;
-    const name = (label || preview?.templateName || "Resume")
-      .replace(/\s+/g, "_")
-      .replace(/[^\w-]/g, "");
-    const blob = new Blob([t], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `Resume_${name}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+  async function removeUpload() {
+    setError("");
+    await fetch("/api/resumes/upload", { method: "DELETE" });
+    setMeta(null);
+    setPreviewUrl(null);
   }
 
-  function showPdf(opts: {
-    plainText: string;
-    title: string;
-    subtitle?: string;
-    fontFamily?: string;
-  }) {
-    if (pdf?.url) URL.revokeObjectURL(pdf.url);
-    const url = resumePreviewBlobUrl(opts);
-    setPdf({ ...opts, url });
+  function onPick(files: FileList | null) {
+    const f = files?.[0];
+    if (f) void uploadFile(f);
   }
 
-  function closePdf() {
-    if (pdf?.url) URL.revokeObjectURL(pdf.url);
-    setPdf(null);
+  if (loading && !profile) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" /> Loading profile…
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full space-y-8">
       <PageHeader
-        eyebrow="Resume studio"
-        title="Templates & job resumes"
-        description="Pick an Ivy ATS template, preview like a PDF, and open every resume generated for a role."
+        eyebrow="Profile & resume"
+        title="You"
+        description="Edit profile for applications, upload your resume as-is, and grab official Ivy templates."
       />
 
+      {message && (
+        <Alert variant="success">
+          <CheckCircle2 className="h-4 w-4" />
+          <AlertDescription>{message}</AlertDescription>
+        </Alert>
+      )}
       {error && (
         <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </p>
       )}
 
-      {/* Tabs */}
-      <div className="inline-flex rounded-full bg-muted p-1 text-[13px] font-medium">
-        <button
-          type="button"
-          onClick={() => setTab("base")}
-          className={cn(
-            "rounded-full px-3.5 py-1.5 transition-colors",
-            tab === "base"
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground"
-          )}
-        >
-          Template & base
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("jobs")}
-          className={cn(
-            "rounded-full px-3.5 py-1.5 transition-colors",
-            tab === "jobs"
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground"
-          )}
-        >
-          Job resumes
-          {jobResumes.length > 0 && (
-            <span className="ml-1.5 font-mono text-[11px] text-muted-foreground">
-              {jobResumes.length}
-            </span>
-          )}
-        </button>
-      </div>
-
-      {loading ? (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" /> Loading…
-        </div>
-      ) : tab === "base" ? (
-        <>
-          {/* Horizontal template carousel */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold tracking-tight">
-                Choose template
-              </h2>
-              <Badge variant="outline" className="font-mono text-[10px]">
-                using: {preferredTpl?.name || preferred}
-              </Badge>
-            </div>
-            <div className="-mx-1 flex gap-2.5 overflow-x-auto px-1 pb-2 pt-0.5 snap-x snap-mandatory">
-              {templates.map((tpl) => {
-                const active = preferred === tpl.id;
-                return (
-                  <button
-                    key={tpl.id}
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void selectTemplate(tpl.id)}
-                    className={cn(
-                      "w-[11.5rem] shrink-0 snap-start rounded-xl border p-3 text-left transition",
-                      "hover:bg-accent/40",
-                      active && "border-primary ring-2 ring-primary/25 bg-card"
-                    )}
-                  >
-                    {/* Mini paper mock */}
-                    <div
-                      className={cn(
-                        "mb-2 h-28 rounded-md border bg-white p-2 shadow-sm dark:bg-zinc-50",
-                        active && "ring-1 ring-primary/20"
-                      )}
-                    >
-                      <div className="mb-1.5 h-1.5 w-10 rounded-full bg-zinc-800" />
-                      <div className="mb-2 h-1 w-16 rounded-full bg-zinc-400" />
-                      <div className="space-y-1">
-                        <div className="h-1 w-full rounded-full bg-zinc-200" />
-                        <div className="h-1 w-[90%] rounded-full bg-zinc-200" />
-                        <div className="h-1 w-[75%] rounded-full bg-zinc-200" />
-                        <div className="h-1 w-full rounded-full bg-zinc-200" />
-                        <div className="h-1 w-[60%] rounded-full bg-zinc-200" />
-                      </div>
-                      <p className="mt-2 text-[8px] font-medium text-zinc-500">
-                        {tpl.fontFamily || "Arial"}
-                      </p>
-                    </div>
-                    <div className="flex items-start justify-between gap-1">
-                      <p className="text-[12px] font-semibold leading-tight">
-                        {tpl.name}
-                      </p>
-                      {active && (
-                        <Check className="size-3.5 shrink-0 text-primary" />
-                      )}
-                    </div>
-                    <p className="mt-0.5 line-clamp-2 text-[10px] text-muted-foreground">
-                      {tpl.bestFor || tpl.description}
-                    </p>
-                    <Badge
-                      variant="secondary"
-                      className="mt-1.5 text-[9px]"
-                    >
-                      ATS {tpl.atsFriendlyScore}
-                    </Badge>
-                  </button>
-                );
-              })}
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              Scroll templates · tap to use. Preferred template is applied on
-              every draft package.
+      {/* ═══ PROFILE ═══ */}
+      {profile && (
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold tracking-tight">Profile</h2>
+            <p className="text-[12px] text-muted-foreground">
+              Used for form prefill and cold email — not for rewriting your
+              uploaded resume.
             </p>
           </div>
 
-          {/* Base preview + checklist */}
-          {preview && (
-            <div className="grid gap-4 lg:grid-cols-[1fr_15rem]">
-              <Card>
-                <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 space-y-0">
-                  <div>
-                    <CardTitle className="text-base">
-                      {preview.templateName}
-                    </CardTitle>
-                    <CardDescription>
-                      Live base resume from your profile
-                    </CardDescription>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8"
-                      onClick={() =>
-                        showPdf({
-                          plainText: preview.plainText,
-                          title: preview.templateName,
-                          subtitle: "Base resume",
-                          fontFamily: preferredTpl?.fontFamily,
-                        })
-                      }
-                    >
-                      <Eye className="size-3.5" />
-                      PDF preview
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8"
-                      onClick={() =>
-                        openResumePdfPreview({
-                          plainText: preview.plainText,
-                          title: preview.templateName,
-                          subtitle: "Base resume",
-                          fontFamily: preferredTpl?.fontFamily,
-                        })
-                      }
-                    >
-                      <FileText className="size-3.5" />
-                      Open PDF
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8"
-                      onClick={() => copyPlain()}
-                    >
-                      {copied ? (
-                        <Check className="size-3.5" />
-                      ) : (
-                        <Copy className="size-3.5" />
-                      )}
-                      {copied ? "Copied" : "Copy"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8"
-                      onClick={() => downloadTxt()}
-                    >
-                      <Download className="size-3.5" />
-                      .txt
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="h-8"
-                      onClick={() => void saveBaseVersion()}
-                      disabled={busy}
-                    >
-                      {busy ? (
-                        <Loader2 className="size-3.5 animate-spin" />
-                      ) : (
-                        <Sparkles className="size-3.5" />
-                      )}
-                      Save version
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <ScoreBar
-                      label="ATS score"
-                      value={preview.atsScore}
-                      tone="primary"
-                    />
-                    <ScoreBar
-                      label="Format"
-                      value={preview.formatScore}
-                      tone="success"
-                    />
-                  </div>
-                  {/* Letter-style mini preview */}
-                  <div className="overflow-hidden rounded-lg border bg-muted/40 p-3 sm:p-4">
-                    <div className="mx-auto max-w-[36rem] rounded-sm bg-white px-5 py-6 shadow-md dark:bg-zinc-50">
-                      <pre className="max-h-[22rem] overflow-y-auto whitespace-pre-wrap font-sans text-[10px] leading-relaxed text-zinc-900 sm:text-[11px]">
-                        {preview.plainText}
-                      </pre>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="h-fit">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">ATS checklist</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {(preview.checklist || []).map((c) => (
-                    <div
-                      key={c.id}
-                      className="flex items-start gap-2 text-xs"
-                    >
-                      {c.ok ? (
-                        <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-success" />
-                      ) : (
-                        <XCircle className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
-                      )}
-                      <div>
-                        <p className="leading-snug">{c.label}</p>
-                        {c.detail && (
-                          <p className="text-[10px] text-muted-foreground">
-                            {c.detail}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  <Separator className="my-2" />
-                  <p className="text-[10px] text-muted-foreground">
-                    Single column · standard fonts · no tables · action-verb
-                    bullets
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {/* Saved base versions */}
-          {resumes.filter((r) => !r.jobListingId).length > 0 && (
-            <div className="space-y-2">
-              <h2 className="text-sm font-semibold">Saved base versions</h2>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {resumes
-                  .filter((r) => !r.jobListingId)
-                  .map((r) => (
-                    <Card key={r.id}>
-                      <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3">
-                        <div className="min-w-0">
-                          <CardTitle className="truncate text-sm">
-                            {r.content?.fullName || "Resume"}
-                          </CardTitle>
-                          <CardDescription className="text-[11px]">
-                            {r.templateId} · ATS {r.atsScore ?? "—"}
-                          </CardDescription>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 shrink-0"
-                          onClick={() =>
-                            showPdf({
-                              plainText: r.plainText,
-                              title: r.content?.fullName || "Resume",
-                              subtitle: r.templateId,
-                            })
-                          }
-                        >
-                          <Eye className="size-3.5" />
-                          PDF
-                        </Button>
-                      </CardHeader>
-                    </Card>
-                  ))}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Basics</CardTitle>
+              <CardDescription>
+                Identity and narrative for applications.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="fullName">Full name</Label>
+                <Input
+                  id="fullName"
+                  value={profile.fullName}
+                  onChange={(e) =>
+                    setProfile({ ...profile, fullName: e.target.value })
+                  }
+                />
               </div>
-            </div>
-          )}
-        </>
-      ) : (
-        /* Job-tailored resumes */
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold tracking-tight">
-              Resumes generated for roles
-            </h2>
-            <Button size="sm" variant="outline" asChild>
-              <Link href="/inbox">Open inbox</Link>
-            </Button>
-          </div>
-
-          {jobResumes.length === 0 ? (
-            <Card>
-              <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                No job resumes yet. Run Search → prepare draft, or Automate →
-                Find + drafts. Packages land here with PDF preview.
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-3">
-              {jobResumes.map((d) => {
-                const company = d.job?.company || "Company";
-                const title = d.job?.title || "Role";
-                const text = d.resume?.plainText || "";
-                return (
-                  <Card key={d.applicationId}>
-                    <CardHeader className="flex flex-col gap-3 space-y-0 p-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <CardTitle className="text-base leading-snug">
-                            {company}
-                          </CardTitle>
-                          <Badge
-                            variant="secondary"
-                            className="text-[10px] capitalize"
-                          >
-                            {d.status.replace(/_/g, " ")}
-                          </Badge>
-                        </div>
-                        <CardDescription className="text-[13px]">
-                          {title}
-                        </CardDescription>
-                        <p className="font-mono text-[11px] text-muted-foreground">
-                          {d.resume?.templateId || "—"}
-                          {d.matchScore != null
-                            ? ` · ATS ${d.matchScore}`
-                            : ""}
-                          {d.shortlistProbability != null
-                            ? ` · shortlist ${Math.round(d.shortlistProbability * 100)}%`
-                            : ""}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        <Button
-                          size="sm"
-                          className="h-8"
-                          disabled={!text}
-                          onClick={() =>
-                            showPdf({
-                              plainText: text,
-                              title: `${company} — ${title}`,
-                              subtitle: d.resume?.templateId,
-                            })
-                          }
-                        >
-                          <Eye className="size-3.5" />
-                          PDF preview
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8"
-                          disabled={!text}
-                          onClick={() =>
-                            openResumePdfPreview({
-                              plainText: text,
-                              title: `${company} — ${title}`,
-                              subtitle: d.resume?.templateId,
-                            })
-                          }
-                        >
-                          <FileText className="size-3.5" />
-                          Open PDF
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8"
-                          disabled={!text}
-                          onClick={() =>
-                            downloadTxt(text, `${company}_${title}`)
-                          }
-                        >
-                          <Download className="size-3.5" />
-                          .txt
-                        </Button>
-                        {d.job?.externalUrl && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8"
-                            asChild
-                          >
-                            <a
-                              href={d.job.externalUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              Job
-                            </a>
-                          </Button>
-                        )}
-                      </div>
-                    </CardHeader>
-                    {text && (
-                      <CardContent className="px-4 pb-4 pt-0">
-                        <div className="overflow-hidden rounded-lg border bg-muted/30 p-3">
-                          <div className="mx-auto max-h-40 max-w-xl overflow-hidden rounded-sm bg-white px-4 py-3 shadow-sm dark:bg-zinc-50">
-                            <pre className="whitespace-pre-wrap font-sans text-[9px] leading-relaxed text-zinc-800 line-clamp-[12]">
-                              {text.slice(0, 900)}
-                              {text.length > 900 ? "…" : ""}
-                            </pre>
-                          </div>
-                        </div>
-                      </CardContent>
-                    )}
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-        </div>
+              <div className="space-y-2">
+                <Label htmlFor="headline">Headline</Label>
+                <Input
+                  id="headline"
+                  value={profile.headline ?? ""}
+                  onChange={(e) =>
+                    setProfile({ ...profile, headline: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="summary">Summary</Label>
+                <Textarea
+                  id="summary"
+                  className="min-h-28"
+                  value={profile.summary ?? ""}
+                  onChange={(e) =>
+                    setProfile({ ...profile, summary: e.target.value })
+                  }
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={profile.email ?? ""}
+                    onChange={(e) =>
+                      setProfile({ ...profile, email: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone</Label>
+                  <Input
+                    id="phone"
+                    value={profile.phone ?? ""}
+                    onChange={(e) =>
+                      setProfile({ ...profile, phone: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="location">Location</Label>
+                  <Input
+                    id="location"
+                    value={profile.location ?? ""}
+                    onChange={(e) =>
+                      setProfile({ ...profile, location: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="years">Years experience</Label>
+                  <Input
+                    id="years"
+                    type="number"
+                    value={profile.yearsExperience ?? 0}
+                    onChange={(e) =>
+                      setProfile({
+                        ...profile,
+                        yearsExperience: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="linkedin">LinkedIn URL</Label>
+                  <Input
+                    id="linkedin"
+                    value={profile.linkedinUrl ?? ""}
+                    onChange={(e) =>
+                      setProfile({ ...profile, linkedinUrl: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="github">GitHub URL</Label>
+                  <Input
+                    id="github"
+                    value={profile.githubUrl ?? ""}
+                    onChange={(e) =>
+                      setProfile({ ...profile, githubUrl: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="interests">Interests (comma-separated)</Label>
+                <Input
+                  id="interests"
+                  value={profile.interests.join(", ")}
+                  onChange={(e) =>
+                    setProfile({
+                      ...profile,
+                      interests: e.target.value
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter(Boolean),
+                    })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="skills">Skills (comma-separated)</Label>
+                <Input
+                  id="skills"
+                  value={profile.skills.map((s) => s.name).join(", ")}
+                  onChange={(e) =>
+                    setProfile({
+                      ...profile,
+                      skills: e.target.value
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter(Boolean)
+                        .map((name, i) => ({
+                          id: `skill_${i}`,
+                          name,
+                          proficiency: "advanced" as const,
+                        })),
+                    })
+                  }
+                />
+              </div>
+              <Button disabled={saving} onClick={() => void saveProfile()}>
+                {saving ? "Saving…" : "Save profile"}
+              </Button>
+            </CardContent>
+          </Card>
+        </section>
       )}
 
-      {/* PDF preview modal */}
-      {pdf && (
-        <div
-          className="fixed inset-0 z-[70] flex flex-col bg-black/70 p-2 sm:p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label="PDF resume preview"
-        >
-          <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-2 rounded-t-xl bg-background px-3 py-2">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{pdf.title}</p>
-              {pdf.subtitle && (
-                <p className="truncate text-[11px] text-muted-foreground">
-                  {pdf.subtitle}
+      {/* ═══ RESUME UPLOAD ═══ */}
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold tracking-tight">
+            Your resume (as-is)
+          </h2>
+          <p className="text-[12px] text-muted-foreground">
+            Upload PDF or DOCX. Preview is the file you uploaded — not AI
+            generated.
+          </p>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Upload</CardTitle>
+              <CardDescription>
+                PDF preferred for live preview. DOCX/TXT supported.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+                className="hidden"
+                onChange={(e) => onPick(e.target.files)}
+              />
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => inputRef.current?.click()}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOver(true);
+                }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOver(false);
+                  onPick(e.dataTransfer.files);
+                }}
+                className={cn(
+                  "flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-10 text-center transition",
+                  dragOver
+                    ? "border-foreground/40 bg-muted/50"
+                    : "border-border bg-muted/20 hover:bg-muted/40",
+                  uploading && "opacity-60"
+                )}
+              >
+                {uploading ? (
+                  <Loader2 className="size-8 animate-spin text-muted-foreground" />
+                ) : (
+                  <Upload className="size-8 text-muted-foreground" />
+                )}
+                <p className="text-sm font-medium">
+                  {uploading
+                    ? "Uploading…"
+                    : "Drop resume here or click to browse"}
                 </p>
+                <p className="text-[11px] text-muted-foreground">
+                  PDF · DOCX · DOC · TXT · max 12MB
+                </p>
+              </button>
+
+              {meta && (
+                <div className="rounded-lg border bg-muted/30 p-3">
+                  <div className="flex items-start gap-2">
+                    <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        {meta.originalName}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {formatBytes(meta.size)} ·{" "}
+                        {new Date(meta.uploadedAt).toLocaleString()}
+                      </p>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        <Badge variant="secondary" className="text-[10px]">
+                          {isPdf ? "PDF" : isText ? "TXT" : "Document"}
+                        </Badge>
+                        <Badge variant="outline" className="text-[10px]">
+                          As uploaded
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    <Button size="sm" className="h-8" asChild>
+                      <a
+                        href={previewUrl || "/api/resumes/upload/file"}
+                        download={meta.originalName}
+                      >
+                        <Download className="size-3.5" />
+                        Download
+                      </a>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8"
+                      onClick={() => inputRef.current?.click()}
+                    >
+                      Replace
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 text-destructive"
+                      onClick={() => void removeUpload()}
+                    >
+                      <Trash2 className="size-3.5" />
+                      Remove
+                    </Button>
+                  </div>
+                </div>
               )}
-            </div>
-            <div className="flex shrink-0 gap-1.5">
-              <Button
-                size="sm"
-                className="h-8"
-                onClick={() =>
-                  openResumePdfPreview({
-                    plainText: pdf.plainText,
-                    title: pdf.title,
-                    subtitle: pdf.subtitle,
-                    fontFamily: pdf.fontFamily,
-                  })
-                }
-              >
-                Print / Save PDF
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8"
-                onClick={closePdf}
-              >
-                <X className="size-3.5" />
-                Close
-              </Button>
-            </div>
-          </div>
-          <iframe
-            title="Resume PDF preview"
-            src={pdf.url}
-            className="mx-auto h-full w-full max-w-4xl flex-1 rounded-b-xl border-0 bg-muted"
-          />
+            </CardContent>
+          </Card>
+
+          <Card className="overflow-hidden">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Preview</CardTitle>
+              <CardDescription>
+                Exact file content — not AI generated.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              {!meta || !previewUrl ? (
+                <div className="flex h-[22rem] flex-col items-center justify-center gap-2 bg-muted/20 px-4 text-center text-sm text-muted-foreground sm:h-[28rem]">
+                  <FileText className="size-10 opacity-40" />
+                  Upload a resume to preview it here.
+                </div>
+              ) : isPdf ? (
+                <iframe
+                  title="Resume preview"
+                  src={previewUrl}
+                  className="h-[22rem] w-full border-0 bg-muted/30 sm:h-[32rem]"
+                />
+              ) : isText ? (
+                <TextPreview url={previewUrl} />
+              ) : (
+                <div className="flex h-[22rem] flex-col items-center justify-center gap-3 bg-muted/20 px-6 text-center sm:h-[28rem]">
+                  <FileText className="size-10 text-muted-foreground opacity-50" />
+                  <div>
+                    <p className="text-sm font-medium">{meta.originalName}</p>
+                    <p className="mt-1 max-w-sm text-[12px] text-muted-foreground">
+                      Live embed works best for PDF. Re-upload as PDF for
+                      in-browser preview, or download the Word file.
+                    </p>
+                  </div>
+                  <Button size="sm" asChild>
+                    <a href={previewUrl} download={meta.originalName}>
+                      <Download className="size-3.5" />
+                      Download file
+                    </a>
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
-      )}
+      </section>
+
+      {/* ═══ IVY TEMPLATES ═══ */}
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold tracking-tight">
+            Ivy League & peer templates
+          </h2>
+          <p className="text-[12px] text-muted-foreground">
+            Click a card to open the official career-center page and download
+            their template.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {IVY_TEMPLATES.map((t) => (
+            <a
+              key={t.id}
+              href={t.url}
+              target="_blank"
+              rel="noreferrer"
+              className={cn(
+                "group flex flex-col rounded-xl border border-border/80 bg-card p-4 shadow-sm transition",
+                "hover:border-foreground/20 hover:shadow-md"
+              )}
+            >
+              <div className="mb-3 flex items-start justify-between gap-2">
+                <div
+                  className={cn(
+                    "flex size-10 items-center justify-center rounded-lg text-sm font-bold text-white",
+                    t.accent
+                  )}
+                >
+                  {t.name.slice(0, 1)}
+                </div>
+                <ExternalLink className="size-3.5 text-muted-foreground opacity-60 transition group-hover:opacity-100" />
+              </div>
+              <p className="text-[15px] font-semibold tracking-tight">
+                {t.name}
+              </p>
+              <p className="mt-0.5 text-[12px] font-medium text-muted-foreground">
+                {t.short}
+              </p>
+              <p className="mt-2 flex-1 text-[12px] leading-relaxed text-muted-foreground">
+                {t.description}
+              </p>
+              <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/50 pt-2.5">
+                <span className="line-clamp-1 text-[10px] text-muted-foreground">
+                  {t.source}
+                </span>
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold">
+                  <Download className="size-2.5" />
+                  Official
+                </span>
+              </div>
+            </a>
+          ))}
+        </div>
+      </section>
     </div>
+  );
+}
+
+function TextPreview({ url }: { url: string }) {
+  const [text, setText] = useState("Loading…");
+  useEffect(() => {
+    let cancelled = false;
+    fetch(url)
+      .then((r) => r.text())
+      .then((t) => {
+        if (!cancelled) setText(t);
+      })
+      .catch(() => {
+        if (!cancelled) setText("Could not load text preview.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+  return (
+    <pre className="h-[22rem] overflow-auto whitespace-pre-wrap bg-white p-5 font-sans text-[12px] leading-relaxed text-zinc-900 sm:h-[32rem] dark:bg-zinc-950 dark:text-zinc-100">
+      {text}
+    </pre>
   );
 }

@@ -150,6 +150,149 @@
   }
 }
 
+/**
+ * Shared page width + horizontal padding.
+ * Header title bar and <main> both use this so left edges match (logo ↔ page titles).
+ */
+@layer components {
+  .vexa-shell {
+    @apply mx-auto w-full max-w-[1400px] px-4 sm:px-6 lg:px-8;
+  }
+
+  /* Hide scrollbar but keep scroll */
+  .vexa-scroll-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .vexa-scroll-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Animated corner border (Kimi / focus) */
+  .vexa-glow-border {
+    position: relative;
+    border-radius: 1.5rem;
+    isolation: isolate;
+  }
+  .vexa-glow-border::before {
+    content: "";
+    position: absolute;
+    inset: -1.5px;
+    border-radius: inherit;
+    padding: 1.5px;
+    background: conic-gradient(
+      from var(--vexa-glow-angle, 0deg),
+      transparent 0%,
+      hsl(var(--foreground) / 0.55) 12%,
+      transparent 28%,
+      transparent 55%,
+      hsl(var(--foreground) / 0.35) 70%,
+      transparent 88%
+    );
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .vexa-glow-border:focus-within::before,
+  .vexa-glow-border.is-listening::before,
+  .vexa-glow-border.is-active::before {
+    opacity: 1;
+    animation: vexa-glow-spin 2.8s linear infinite;
+  }
+  .vexa-glow-border.is-listening::before {
+    background: conic-gradient(
+      from var(--vexa-glow-angle, 0deg),
+      transparent 0%,
+      rgb(52 211 153 / 0.9) 15%,
+      transparent 35%,
+      rgb(16 185 129 / 0.5) 60%,
+      transparent 85%
+    );
+    animation-duration: 1.4s;
+  }
+  /* Mic armed (click mic) — cool blue ring ready for hold */
+  .vexa-glow-border.is-mic-armed::before {
+    opacity: 1;
+    background: conic-gradient(
+      from var(--vexa-glow-angle, 0deg),
+      transparent 0%,
+      rgb(56 189 248 / 0.85) 14%,
+      transparent 32%,
+      rgb(14 165 233 / 0.45) 58%,
+      transparent 82%
+    );
+    animation: vexa-glow-spin 2.2s linear infinite;
+  }
+  .vexa-mic-armed {
+    animation: vexa-mic-armed-ring 1.6s ease-in-out infinite;
+  }
+  @keyframes vexa-mic-armed-ring {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgb(56 189 248 / 0.4);
+    }
+    50% {
+      box-shadow: 0 0 0 8px rgb(56 189 248 / 0);
+    }
+  }
+  .vexa-glow-border > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  @keyframes vexa-glow-spin {
+    to {
+      --vexa-glow-angle: 360deg;
+    }
+  }
+
+  @property --vexa-glow-angle {
+    syntax: "<angle>";
+    initial-value: 0deg;
+    inherits: false;
+  }
+
+  /* Mic pulse while holding */
+  .vexa-mic-pulse {
+    animation: vexa-mic-pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes vexa-mic-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgb(16 185 129 / 0.45);
+    }
+    50% {
+      box-shadow: 0 0 0 10px rgb(16 185 129 / 0);
+    }
+  }
+
+  /* Live voice wave bars */
+  .vexa-wave-bars span {
+    display: block;
+    animation: vexa-wave 0.9s ease-in-out infinite;
+  }
+  @keyframes vexa-wave {
+    0%,
+    100% {
+      transform: scaleY(0.45);
+      opacity: 0.55;
+    }
+    50% {
+      transform: scaleY(1.15);
+      opacity: 1;
+    }
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   a,
   button,

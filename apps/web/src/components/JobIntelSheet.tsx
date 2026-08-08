@@ -10,10 +10,12 @@ import {
   ExternalLink,
   FolderGit2,
   Loader2,
+  Mail,
   Radar,
   Users,
   AlertTriangle,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import {
   Sheet,
   SheetContent,
@@ -50,11 +52,31 @@ export function JobIntelSheet({
   onOpenChange: (open: boolean) => void;
   job: JobListing | null;
 }) {
+  const router = useRouter();
   const [steps, setSteps] = useState<ScanStep[]>([]);
   const [intel, setIntel] = useState<JobIntel | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [queued, setQueued] = useState(false);
+
+  function draftOutreach(person: {
+    name: string;
+    role?: string;
+    snippet: string;
+  }) {
+    if (!job) return;
+    const params = new URLSearchParams({
+      toName: person.name,
+      toRole: person.role || "",
+      company: job.company,
+      jobTitle: job.title,
+      jobUrl: job.externalUrl,
+      projectHook: person.snippet.slice(0, 240),
+      userNote: `From intel scan — ${person.name}`,
+    });
+    onOpenChange(false);
+    router.push(`/outreach?${params.toString()}`);
+  }
 
   useEffect(() => {
     if (!open || !job) return;
@@ -304,6 +326,22 @@ export function JobIntelSheet({
                             ))}
                           </div>
                         )}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="mt-2 h-7 gap-1 text-[10px]"
+                          onClick={() =>
+                            draftOutreach({
+                              name: p.name,
+                              role: p.role,
+                              snippet: p.snippet,
+                            })
+                          }
+                        >
+                          <Mail className="size-3" />
+                          Draft outreach
+                        </Button>
                       </li>
                     ))}
                   </ul>
@@ -405,7 +443,7 @@ export function JobIntelSheet({
               }
               onClick={() => {
                 setQueued(true);
-                // Apply later — store flag only; full apply comes after this feature
+                // Apply later — local flag + durable app memory (companies applied vault)
                 try {
                   const key = "vexa:applyLater";
                   const prev = JSON.parse(
@@ -419,6 +457,23 @@ export function JobIntelSheet({
                   }
                 } catch {
                   /* ignore */
+                }
+                if (job) {
+                  void fetch("/api/tasks", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      type: "apply_later",
+                      company: job.company,
+                      title: job.title,
+                      jobId: job.id,
+                      url: job.externalUrl,
+                      status: "apply_later",
+                      note: "queued from intel sheet",
+                    }),
+                  }).catch(() => {
+                    /* offline / ignore */
+                  });
                 }
               }}
             >

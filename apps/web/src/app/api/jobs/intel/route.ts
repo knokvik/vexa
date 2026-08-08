@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { store } from "@/lib/store";
 import { scanJobIntel } from "@/lib/job-intel";
+import { rememberEvent } from "@/lib/app-memory";
 import type { JobListing } from "@vexa/shared";
 
 /**
@@ -30,6 +31,21 @@ export async function POST(request: Request) {
 
     const profile = store.getProfile();
     const intel = await scanJobIntel(job, profile);
+
+    await rememberEvent({
+      type: "intel_scan",
+      company: job.company,
+      title: job.title,
+      jobId: job.id,
+      url: job.externalUrl,
+      status: intel.readiness,
+      note: `readiness=${intel.readiness}`,
+      meta: {
+        readiness: intel.readiness,
+        people: intel.people?.length,
+        projects: intel.projects?.length,
+      },
+    });
 
     return NextResponse.json({ ok: true, intel });
   } catch (e) {

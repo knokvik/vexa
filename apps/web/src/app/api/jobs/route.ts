@@ -3,11 +3,15 @@ import type { JobListing } from "@vexa/shared";
 import { store } from "@/lib/store";
 
 export async function GET() {
+  await store.ensureHydrated();
+  // Re-clean company labels so dashboard never shows Ashbyhq/ZipRecruiter as employers
+  store.reprocessJobCompanies();
   return NextResponse.json({ jobs: store.listJobs() });
 }
 
 /** Ingest jobs from adapters (Firecrawl/manual). Public listings only. */
 export async function POST(request: Request) {
+  await store.ensureHydrated();
   const body = await request.json();
   const jobs = (body.jobs ?? []) as JobListing[];
   if (!Array.isArray(jobs) || jobs.length === 0) {

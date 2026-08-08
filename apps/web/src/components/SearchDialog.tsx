@@ -8,11 +8,9 @@ import {
   ChevronDown,
   ExternalLink,
   Loader2,
-  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
@@ -22,8 +20,13 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { reportActivity, appendLog } from "@/lib/activity-bus";
+import { expandSearchIntent } from "@/lib/query-intent";
+import {
+  KeywordSearchInput,
+  buildKeywordQuery,
+} from "@/components/KeywordSearchInput";
 
-type TierId = "company" | "portal" | "linkedin";
+type TierId = "free" | "company" | "portal" | "linkedin";
 
 type TierState = {
   id: TierId;
@@ -38,8 +41,9 @@ type JobCard = JobListing & {
 };
 
 const TIER_META: Array<{ id: TierId; label: string }> = [
+  { id: "free", label: "Free boards" },
+  { id: "portal", label: "ATS portals" },
   { id: "company", label: "Company sites" },
-  { id: "portal", label: "Job portals" },
   { id: "linkedin", label: "LinkedIn" },
 ];
 
@@ -53,6 +57,7 @@ export function SearchDialog({
   initialQuery?: string;
 }) {
   const [query, setQuery] = useState(initialQuery);
+  const [keywords, setKeywords] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
   const [tiers, setTiers] = useState<TierState[]>(() =>
     TIER_META.map((t) => ({ ...t, status: "pending" as const, count: 0 }))
@@ -63,6 +68,7 @@ export function SearchDialog({
   const [note, setNote] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [intentHint, setIntentHint] = useState<string[]>([]);
   const runIdRef = useRef(0);
   const startedFor = useRef<string | null>(null);
 
@@ -104,9 +110,12 @@ export function SearchDialog({
       }))
     );
 
+    const intent = expandSearchIntent(trimmed);
+    setIntentHint([intent.primary, ...intent.variants].slice(0, 4));
     appendLog({
       kind: "search",
       message: `Search started: ${trimmed}`,
+      detail: `expanded → ${intent.primary}`,
       status: "running",
     });
 
@@ -124,7 +133,7 @@ export function SearchDialog({
       );
       reportActivity({
         tool: "discover",
-        action: `Searching ${meta.label}`,
+        action: `Searching ${meta.label} · ${intent.primary}`,
         status: "running",
       });
 
@@ -136,6 +145,14 @@ export function SearchDialog({
         });
         const data = await res.json();
         if (runId !== runIdRef.current) return;
+        if (data.expansion?.primary) {
+          setIntentHint(
+            [data.expansion.primary, ...(data.expansion.variants || [])].slice(
+              0,
+              4
+            )
+          );
+        }
 
         const incoming = (data.jobs || []) as JobCard[];
         const pv = data.providers || { firecrawl: 0, exa: 0 };
@@ -156,10 +173,25 @@ export function SearchDialog({
           );
         }
 
+        const freeDetail =
+          meta.id === "free" && data.freeSources
+            ? Object.entries(
+                data.freeSources as Record<
+                  string,
+                  { count: number; error?: string }
+                >
+              )
+                .map(
+                  ([k, v]) =>
+                    `${k}=${v.count}${v.error ? `(!)` : ""}`
+                )
+                .join(" ")
+            : `fc=${pv.firecrawl || 0} exa=${pv.exa || 0}`;
+
         appendLog({
           kind: "discover",
           message: `${meta.label}: +${added} roles`,
-          detail: `fc=${pv.firecrawl || 0} exa=${pv.exa || 0}`,
+          detail: freeDetail,
           status: "done",
         });
 
@@ -209,12 +241,13 @@ export function SearchDialog({
 
   useEffect(() => {
     if (!open) return;
-    const q = (initialQuery || query).trim();
-    if (q && startedFor.current !== q) {
+    const q = buildKeywordQuery(initialQuery || query, keywords).trim();
+    if (q && startedFor.current !== q && initialQuery) {
+      // Auto-run only when opened with a prefilled query
       startedFor.current = q;
       void runSearch(q);
     }
-  }, [open, initialQuery, query, runSearch]);
+  }, [open, initialQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function prepare(jobId: string) {
     setBusyId(jobId);
@@ -250,44 +283,34 @@ export function SearchDialog({
         <SheetHeader className="space-y-1 border-b px-4 py-4 text-left">
           <SheetTitle className="text-base">Live search</SheetTitle>
           <SheetDescription className="text-[12px]">
-            Results stream in. Drafts go to Inbox — nothing auto-submits.
+            Free boards first ($0: Remotive, Jobicy, Himalayas…). Drafts →
+            Inbox — never auto-submits.
           </SheetDescription>
         </SheetHeader>
 
         <div className="border-b px-4 py-3">
-          <form
-            className="flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
+          <KeywordSearchInput
+            value={query}
+            onChange={setQuery}
+            keywords={keywords}
+            onKeywordsChange={setKeywords}
+            disabled={running}
+            autoFocus
+            placeholder="Role: software engineer, intern…"
+            keywordsPlaceholder="Keywords: C++, remote, quant, TypeScript…"
+            onSubmit={(combined) => {
               startedFor.current = null;
-              void runSearch(query);
+              void runSearch(combined);
             }}
-          >
-            <div className="relative min-w-0 flex-1">
-              <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="h-9 pl-8 text-[13px]"
-                placeholder="e.g. backend engineer typescript"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                disabled={running}
-                autoFocus
-              />
-            </div>
-            <Button
-              type="submit"
-              size="sm"
-              className="h-9 shrink-0"
-              disabled={running || !query.trim()}
-            >
-              {running ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Search className="size-3.5" />
-              )}
-              Search
-            </Button>
-          </form>
+          />
+          {intentHint.length > 0 && (
+            <p className="mt-1.5 text-[10px] text-muted-foreground">
+              Processing:{" "}
+              <span className="font-mono text-foreground/80">
+                {intentHint.join(" · ")}
+              </span>
+            </p>
+          )}
 
           {activeQuery && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">

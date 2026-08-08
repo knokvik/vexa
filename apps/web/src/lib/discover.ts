@@ -5,8 +5,10 @@
 
 import type { JobListing, JobSource } from "@vexa/shared";
 import { normalizeJob } from "./ingest/adapters";
+import { cleanJobTitle, resolveCompany } from "./job-normalize";
+import { buildDiscoveryQuery } from "./query-intent";
 
-export type DiscoverTier = "company" | "portal" | "linkedin";
+export type DiscoverTier = "free" | "company" | "portal" | "linkedin";
 
 export type TierResult = {
   tier: DiscoverTier;
@@ -18,6 +20,8 @@ export type TierResult = {
   rawCount?: number;
   /** Per-provider counts after quality filter */
   providers: { firecrawl: number; exa: number };
+  /** Free-source breakdown when tier === "free" */
+  freeSources?: Record<string, { count: number; error?: string; free: true }>;
 };
 
 function env(name: string): string {
@@ -247,30 +251,36 @@ function toJob(
   query: string
 ): JobListing {
   const desc = (r.markdown || r.description || r.text || "").slice(0, 4000);
+  const url = r.url || `https://example.com/job/${prefix}/${i}`;
+  const company = resolveCompany({
+    title: r.title,
+    url,
+    company: guessCompany(r.title, r.url),
+  });
+  const title = cleanJobTitle(r.title, query);
   return normalizeJob({
     id: `${prefix}_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 7)}`,
     source,
-    title: cleanTitle(r.title, query),
-    company: guessCompany(r.title, r.url),
-    externalUrl: r.url || `https://example.com/job/${prefix}/${i}`,
+    title,
+    company,
+    externalUrl: url,
     description: desc || "Open the link for full description.",
     location: { remote: /remote/i.test(`${r.title} ${desc}`) },
     skillsRequired: extractSkillsLite(desc),
     requirements: [],
     responsibilities: [],
     employmentType: "full-time",
-    experienceLevel: /senior|staff|principal/i.test(`${r.title}`)
-      ? "senior"
-      : "mid",
+    experienceLevel: /intern|internship|new grad|entry/i.test(
+      `${r.title} ${query}`
+    )
+      ? "entry"
+      : /senior|staff|principal/i.test(`${r.title}`)
+        ? "senior"
+        : "mid",
     status: "active",
     postedAt: r.publishedDate,
     scrapedAt: new Date().toISOString(),
   });
-}
-
-function cleanTitle(title: string | undefined, query: string): string {
-  if (!title) return query;
-  return title.replace(/\s*[|\-–].{10,}$/, "").trim().slice(0, 120);
 }
 
 function extractSkillsLite(text: string): string[] {
@@ -300,40 +310,7 @@ function extractSkillsLite(text: string): string[] {
 }
 
 function guessCompany(title?: string, url?: string): string {
-  if (url) {
-    try {
-      const host = new URL(url).hostname.replace(/^www\./, "");
-      const parts = host.split(".");
-      const part = parts.length > 2 ? parts[parts.length - 2] : parts[0];
-      const skip = new Set([
-        "linkedin",
-        "indeed",
-        "glassdoor",
-        "wellfound",
-        "jobs",
-        "careers",
-        "greenhouse",
-        "lever",
-        "boards",
-        "job-boards",
-      ]);
-      if (part && !skip.has(part)) {
-        return part.charAt(0).toUpperCase() + part.slice(1);
-      }
-      // greenhouse.io/company/jobs/id
-      if (/greenhouse\.io/i.test(host)) {
-        const m = url.match(/greenhouse\.io\/([^/]+)/i);
-        if (m?.[1] && m[1] !== "jobs") return m[1];
-      }
-      if (/lever\.co/i.test(host)) {
-        const m = url.match(/lever\.co\/([^/]+)/i);
-        if (m?.[1]) return m[1];
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-  return title?.split(/[-|@·]/)[0]?.trim().slice(0, 40) || "Company";
+  return resolveCompany({ title, url, company: undefined });
 }
 
 function isLinkedInUrl(url?: string) {
@@ -359,8 +336,43 @@ export async function discoverTier(
   tier: DiscoverTier
 ): Promise<TierResult> {
   const started = Date.now();
+
+  // Layer 1 free boards — $0, no Firecrawl/Exa keys required
+  if (tier === "free") {
+    try {
+      const { discoverFreeJobs } = await import("./free-sources");
+      const free = await discoverFreeJobs(query);
+      return {
+        tier: "free",
+        label: "Free boards (Remotive · Jobicy · Himalayas · WWR · RemoteOK…)",
+        priority: 0,
+        jobs: free.jobs.slice(0, 24),
+        rawCount: free.jobs.length,
+        providers: { firecrawl: 0, exa: 0 },
+        freeSources: free.sources,
+        durationMs: Date.now() - started,
+        error: free.jobs.length
+          ? undefined
+          : Object.values(free.sources)
+              .map((s) => s.error)
+              .filter(Boolean)
+              .join("; ") || undefined,
+      };
+    } catch (e) {
+      return {
+        tier: "free",
+        label: "Free boards",
+        priority: 0,
+        jobs: [],
+        providers: { firecrawl: 0, exa: 0 },
+        durationMs: Date.now() - started,
+        error: e instanceof Error ? e.message : "free sources failed",
+      };
+    }
+  }
+
   const meta: Record<
-    DiscoverTier,
+    Exclude<DiscoverTier, "free">,
     { label: string; priority: number; fcQ: string; exaQ: string }
   > = {
     company: {
@@ -397,6 +409,44 @@ export async function discoverTier(
     score?: number;
     _src: JobSource;
   }> = [];
+
+  // Official Greenhouse / Lever public JSON first (no scrape, no auth — anti-block)
+  if (tier === "portal" || tier === "company") {
+    try {
+      const {
+        extractBoardHints,
+        fetchOfficialBoards,
+        filterJobsByQuery,
+        normalizeJob,
+      } = await import("./ingest/adapters");
+      // Seed well-known ATS boards on portal tier so we always have direct-apply URLs
+      const hints = extractBoardHints(query, {
+        seedWellKnown: tier === "portal",
+        maxWellKnown: 6,
+      });
+      const official = await fetchOfficialBoards(hints);
+      const matched = filterJobsByQuery(official, query, 24);
+      for (const partial of matched) {
+        if (!partial.externalUrl || !partial.title) continue;
+        const job = normalizeJob(
+          partial as Parameters<typeof normalizeJob>[0]
+        );
+        raw.push({
+          url: job.externalUrl,
+          title: job.title,
+          description: job.description,
+          text: job.description,
+          // Mark so ranking can prefer official ATS
+          _src: job.source === "lever" ? "exa" : "firecrawl",
+          score: 0.95,
+        });
+      }
+    } catch (e) {
+      errors.push(
+        `official_boards: ${e instanceof Error ? e.message : String(e)}`
+      );
+    }
+  }
 
   // Backbone: search both, then rank — Exa semantic first for company tier
   const [fcResult, exResult] = await Promise.allSettled([
@@ -501,25 +551,86 @@ export async function discoverTier(
   };
 }
 
-export async function discoverJobs(query: string): Promise<{
+export type DiscoverOptions = {
+  /** Skip LinkedIn tier (default true for anti-block / prefill-friendly path) */
+  skipLinkedIn?: boolean;
+  /** Max jobs returned after merge */
+  limit?: number;
+};
+
+/**
+ * Discover jobs with ATS-first priority.
+ * Default skips LinkedIn to avoid Easy-Apply walls; use skipLinkedIn:false for research.
+ */
+export async function discoverJobs(
+  query: string,
+  opts: DiscoverOptions = {}
+): Promise<{
   jobs: JobListing[];
   sources: Record<string, { count: number; error?: string }>;
+  expansion?: ReturnType<typeof buildDiscoveryQuery>["expansion"];
 }> {
+  const skipLinkedIn = opts.skipLinkedIn !== false;
+  const limit = opts.limit ?? 40;
   const sources: Record<string, { count: number; error?: string }> = {};
   const jobs: JobListing[] = [];
-  for (const tier of ["company", "portal", "linkedin"] as DiscoverTier[]) {
-    const r = await discoverTier(query, tier);
+
+  // Expand user intent (intern / quant / SWE → better search phrases)
+  const { query: expandedQuery, expansion } = buildDiscoveryQuery(query);
+
+  // Free boards first ($0), then ATS portals, company careers, LinkedIn last/opt
+  const tiers: DiscoverTier[] = skipLinkedIn
+    ? ["free", "portal", "company"]
+    : ["free", "portal", "company", "linkedin"];
+
+  for (const tier of tiers) {
+    const r = await discoverTier(expandedQuery, tier);
     sources[tier] = { count: r.jobs.length, error: r.error };
+    if (r.freeSources) {
+      for (const [k, v] of Object.entries(r.freeSources)) {
+        sources[`free_${k}`] = { count: v.count, error: v.error };
+      }
+    }
     jobs.push(...r.jobs);
   }
+  if (skipLinkedIn) {
+    sources.linkedin = {
+      count: 0,
+      error: "skipped (prefer direct ATS to avoid platform blocks)",
+    };
+  }
+
   const seen = new Set<string>();
+  const unique = jobs.filter((j) => {
+    if (seen.has(j.externalUrl)) return false;
+    seen.add(j.externalUrl);
+    return true;
+  });
+
+  // Prefer direct ATS surfaces for apply/prefill success
+  const surfaceRank = (url: string) => {
+    const u = (url || "").toLowerCase();
+    if (/greenhouse\.io|lever\.co|ashbyhq\.com/.test(u)) return 0;
+    if (/workday|myworkdayjobs|smartrecruiters|jobvite|icims/.test(u)) return 1;
+    if (
+      /remotive\.com|arbeitnow\.com|remoteok\.com|jobicy\.com|himalayas\.app|weworkremotely\.com/.test(
+        u
+      )
+    )
+      return 2;
+    if (/\/careers\/|\/jobs\//.test(u)) return 2;
+    if (/linkedin\.com|indeed\.com/.test(u)) return 4;
+    return 3;
+  };
+
+  unique.sort(
+    (a, b) => surfaceRank(a.externalUrl) - surfaceRank(b.externalUrl)
+  );
+
   return {
-    jobs: jobs.filter((j) => {
-      if (seen.has(j.externalUrl)) return false;
-      seen.add(j.externalUrl);
-      return true;
-    }),
+    jobs: unique.slice(0, limit),
     sources,
+    expansion,
   };
 }
 

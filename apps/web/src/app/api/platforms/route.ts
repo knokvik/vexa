@@ -2,12 +2,32 @@ import { NextResponse } from "next/server";
 import { PLATFORM_CATALOG } from "@vexa/shared";
 import type { PlatformId } from "@vexa/shared";
 import { store } from "@/lib/store";
-import { listOAuthConfigStatus } from "@/lib/oauth/config";
+import {
+  getOAuthAppEnvStatus,
+  listOAuthConfigStatus,
+} from "@/lib/oauth/config";
 
 export async function GET() {
+  const oauth = listOAuthConfigStatus();
+  const appEnv = getOAuthAppEnvStatus();
+  const readyProviders = (
+    ["github", "google", "linkedin", "x"] as const
+  ).filter((id) => oauth[id].oauthConfigured);
+  const missingProviders = (
+    ["github", "google", "linkedin", "x"] as const
+  ).filter((id) => !oauth[id].oauthConfigured);
+
   return NextResponse.json({
     catalog: PLATFORM_CATALOG,
-    oauth: listOAuthConfigStatus(),
+    oauth,
+    appEnv,
+    setup: {
+      readyCount: readyProviders.length,
+      missingCount: missingProviders.length,
+      readyProviders,
+      missingProviders,
+      docsPath: "docs/OAUTH_SETUP.md",
+    },
     ...store.getSyncStatus(),
   });
 }

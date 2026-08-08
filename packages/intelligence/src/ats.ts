@@ -201,12 +201,29 @@ export function scoreAts(
   );
   const semanticScore = Math.round(jaccard(resumeTokens, jobBag) * 100);
 
-  // Format compliance (ATS-friendly templates)
-  let formatScore = 92;
+  // Format compliance (ATS-friendly: single column, sections, contact, no tables)
+  let formatScore = 94;
   if (typeof resume !== "string") {
     if (resume.sections.length < 2) formatScore -= 25;
-    if (!resume.contact.email && !resume.fullName) formatScore -= 10;
+    if (!resume.contact.email && !resume.contact.phone && !resume.fullName)
+      formatScore -= 12;
+    else if (!resume.contact.email && !resume.contact.phone) formatScore -= 4;
+    const types = new Set(resume.sections.map((s) => s.type));
+    if (!types.has("experience")) formatScore -= 15;
+    if (!types.has("skills") && !types.has("additional")) formatScore -= 8;
+    if (types.has("education")) formatScore += 2;
+    // Known Ivy/ATS template ids get a small boost
+    const tid = resume.templateId || "";
+    if (
+      /tpl-(harvard|princeton|yale|mit|penn|modern|classic|technical)/.test(
+        tid
+      )
+    ) {
+      formatScore += 3;
+    }
   }
+  // Tables / multi-column artifacts hurt ATS parsers
+  if (/┌|┐|│{2,}|\t{2,}/.test(resumeText)) formatScore -= 20;
   // penalize keyword stuffing signal (unnatural density)
   const density =
     resumeText.length > 0
@@ -215,6 +232,7 @@ export function scoreAts(
         ).length / Math.max(resumeText.split(/\s+/).length / 50, 1)
       : 0;
   if (density > 8) formatScore -= 15;
+  formatScore = Math.max(0, Math.min(100, formatScore));
 
   // Structured: metrics + experience alignment
   const hasMetrics = /\d+%|\$\d+|x\d+|\d+\+?\s*(years|yrs)/i.test(resumeText);

@@ -1,259 +1,402 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import type { JobListing } from "@vexa/shared";
 import {
-  ChevronDown,
   ExternalLink,
   Loader2,
-  Search,
+  Radar,
+  Users,
+  FolderGit2,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useSearchDialog } from "@/components/SearchProvider";
+import {
+  KeywordSearchInput,
+  buildKeywordQuery,
+} from "@/components/KeywordSearchInput";
 import { appendLog } from "@/lib/activity-bus";
 import { cn } from "@/lib/utils";
 
+type Intel = {
+  people?: Array<{ name: string; role?: string; snippet: string; url?: string }>;
+  projects?: Array<{ title: string; description: string; url?: string }>;
+  mentions?: { skills?: string[]; requirements?: string[] };
+  gaps?: Array<{ skill: string; have: boolean }>;
+  readiness?: string;
+  waitingReasons?: string[];
+  sourcesUsed?: string[];
+};
+
 export default function JobsPage() {
   const { openSearch } = useSearchDialog();
+  const searchParams = useSearchParams();
   const [jobs, setJobs] = useState<JobListing[]>([]);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [note, setNote] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [intel, setIntel] = useState<Intel | null>(null);
+  const [busy, setBusy] = useState(false);
   const [running, setRunning] = useState(false);
   const [q, setQ] = useState("software engineer");
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [keywords, setKeywords] = useState("");
+  const [note, setNote] = useState("");
 
-  async function load() {
+  const selected = jobs.find((j) => j.id === selectedId) || null;
+
+  const load = useCallback(async () => {
     const res = await fetch("/api/jobs");
     const data = await res.json();
-    setJobs(data.jobs ?? []);
-  }
+    const list = (data.jobs ?? []) as JobListing[];
+    setJobs(list);
+    const focus = searchParams.get("focus");
+    if (focus && list.some((j) => j.id === focus)) {
+      setSelectedId(focus);
+    } else if (!selectedId && list[0]) {
+      setSelectedId(list[0].id);
+    }
+  }, [searchParams, selectedId]);
 
   useEffect(() => {
     void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function prepare(jobId: string) {
-    setBusyId(jobId);
+  async function research(jobId: string) {
+    setBusy(true);
     setNote("");
-    const res = await fetch("/api/applications", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobId }),
-    });
-    const data = await res.json();
-    setBusyId(null);
-    if (data.error) {
-      setNote(data.error);
-      return;
-    }
+    setIntel(null);
     appendLog({
-      kind: "draft",
-      message: `Draft prepared for ${data.draft?.job?.company || jobId}`,
-      status: "done",
+      kind: "intel",
+      message: "Researching people & projects…",
+      status: "running",
     });
-    setNote(
-      `Draft ready for ${data.draft?.id ?? "application"} — check Draft Inbox.`
-    );
+    try {
+      const res = await fetch("/api/jobs/intel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Intel failed");
+      setIntel(data.intel || null);
+      setSelectedId(jobId);
+      appendLog({
+        kind: "intel",
+        message: `Intel: ${data.intel?.people?.length || 0} people · ${data.intel?.projects?.length || 0} projects`,
+        status: "done",
+      });
+      setNote(
+        `Ready · ${data.intel?.readiness || "—"} · sources ${(data.intel?.sourcesUsed || []).join(", ") || "heuristic"}`
+      );
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : "Research failed");
+      appendLog({
+        kind: "intel",
+        message: e instanceof Error ? e.message : "failed",
+        status: "error",
+      });
+    } finally {
+      setBusy(false);
+    }
   }
 
-  async function startAutomation() {
+  async function discoverOnly() {
     setRunning(true);
-    setNote("");
+    const query = buildKeywordQuery(q, keywords) || "software engineer";
     const res = await fetch("/api/automation/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: "drafts", maxDrafts: 5 }),
+      body: JSON.stringify({ mode: "find", query }),
     });
     const data = await res.json();
     setRunning(false);
-    setNote(
-      `Automation prepared ${data.prepared ?? 0} draft(s). Open Draft Inbox.`
-    );
-    appendLog({
-      kind: "automation",
-      message: `Batch drafts: ${data.prepared ?? 0} prepared`,
-      status: "done",
-    });
-    void load();
+    setNote(data.message || `Found ${data.discovered ?? 0}`);
+    await load();
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="space-y-4">
       <PageHeader
         eyebrow="Jobs"
-        title="Pipeline"
-        description="Compact list of roles you found. Expand a row for actions."
+        title="Board & research"
+        description="Pick a role → research people & projects in the side panel. You apply."
         actions={
           <Button
             variant="outline"
             size="sm"
             disabled={running}
-            onClick={() => void startAutomation()}
+            onClick={() => void discoverOnly()}
           >
             {running && <Loader2 className="size-3.5 animate-spin" />}
-            Prepare drafts
+            Find more
           </Button>
         }
       />
 
-      {/* Open search dialog */}
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          openSearch(q.trim() || undefined);
-        }}
-      >
-        <Input
+      <div className="rounded-xl border bg-card p-3 shadow-sm">
+        <KeywordSearchInput
+          compact
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={setQ}
+          keywords={keywords}
+          onKeywordsChange={setKeywords}
           placeholder="Find roles…"
-          className="h-9 flex-1"
+          keywordsPlaceholder="Keywords…"
+          onSubmit={(combined) => {
+            openSearch(combined || buildKeywordQuery(q, keywords) || undefined);
+          }}
         />
-        <Button type="submit" size="sm" className="h-9 shrink-0">
-          <Search className="size-3.5" />
-          Search
-        </Button>
-      </form>
+      </div>
 
       {note && (
-        <Alert>
-          <AlertDescription>
-            {note}{" "}
-            <Link href="/inbox" className="font-medium underline">
-              Open inbox
-            </Link>
-          </AlertDescription>
-        </Alert>
+        <p className="text-xs text-muted-foreground">{note}</p>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-sm">
-        <div className="flex items-center justify-between border-b border-border/60 bg-muted/30 px-3 py-2">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            Listings
-          </p>
-          <span className="font-mono text-[11px] text-muted-foreground">
-            {jobs.length}
-          </span>
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_340px]">
+        {/* Job list */}
+        <div className="max-h-[min(70vh,640px)] overflow-y-auto rounded-xl border bg-card shadow-sm">
+          {jobs.length === 0 ? (
+            <p className="px-4 py-12 text-center text-sm text-muted-foreground">
+              No jobs yet.{" "}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => openSearch()}
+              >
+                Search
+              </button>
+            </p>
+          ) : (
+            <ul>
+              {jobs.map((job) => {
+                const on = selectedId === job.id;
+                return (
+                  <li key={job.id} className="border-b border-border/50 last:border-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedId(job.id);
+                        setIntel(null);
+                      }}
+                      className={cn(
+                        "flex w-full flex-col gap-0.5 px-3 py-2.5 text-left transition-colors",
+                        on ? "bg-muted/60" : "hover:bg-muted/30"
+                      )}
+                    >
+                      <span className="text-[13px] font-semibold leading-snug">
+                        {job.title}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {job.company}
+                        {job.location?.remote ? " · Remote" : ""}
+                      </span>
+                      <div className="mt-0.5 flex gap-1">
+                        <Badge variant="secondary" className="text-[9px]">
+                          {job.source}
+                        </Badge>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
 
-        {jobs.length === 0 ? (
-          <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-            No jobs yet.{" "}
-            <button
-              type="button"
-              className="font-medium underline"
-              onClick={() => openSearch()}
-            >
-              Run a search
-            </button>
-          </p>
-        ) : (
-          <ul>
-            {jobs.map((job) => {
-              const open = expanded === job.id;
-              return (
-                <li
-                  key={job.id}
-                  className="border-b border-border/40 last:border-0"
-                >
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-muted/30"
-                    onClick={() => setExpanded(open ? null : job.id)}
-                    aria-expanded={open}
+        {/* Research sidebar */}
+        <aside className="flex max-h-[min(70vh,640px)] flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
+          {!selected ? (
+            <p className="p-6 text-center text-sm text-muted-foreground">
+              Select a job
+            </p>
+          ) : (
+            <>
+              <div className="border-b px-3 py-2.5">
+                <p className="text-[13px] font-semibold leading-snug">
+                  {selected.title}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {selected.company}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <Button
+                    size="sm"
+                    className="h-7 text-[11px]"
+                    disabled={busy}
+                    onClick={() => void research(selected.id)}
                   >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-semibold tracking-tight">
-                        {job.title}
-                      </p>
-                      <p className="truncate text-[11px] text-muted-foreground">
-                        {job.company}
-                        {job.location?.city ? ` · ${job.location.city}` : ""}
-                        {job.location?.remote ? " · Remote" : ""}
-                      </p>
-                    </div>
-                    <Badge
-                      variant="secondary"
-                      className="shrink-0 text-[9px]"
-                    >
-                      {job.source}
-                    </Badge>
-                    <ChevronDown
-                      className={cn(
-                        "size-4 shrink-0 text-muted-foreground transition-transform duration-300 ease-out",
-                        open && "rotate-180"
-                      )}
-                    />
-                  </button>
-
-                  {/* Smooth expand */}
-                  <div
-                    className={cn(
-                      "grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
-                      open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                    {busy ? (
+                      <Loader2 className="size-3 animate-spin" />
+                    ) : (
+                      <Radar className="size-3" />
                     )}
+                    Research people & projects
+                  </Button>
+                  {selected.externalUrl && (
+                    <Button size="sm" variant="outline" className="h-7 text-[11px]" asChild>
+                      <a
+                        href={selected.externalUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open <ExternalLink className="size-3" />
+                      </a>
+                    </Button>
+                  )}
+                  <Button size="sm" variant="secondary" className="h-7 text-[11px]" asChild>
+                    <Link
+                      href={`/outreach?company=${encodeURIComponent(selected.company)}&jobTitle=${encodeURIComponent(selected.title)}&jobUrl=${encodeURIComponent(selected.externalUrl || "")}`}
+                    >
+                      Outreach
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex-1 space-y-4 overflow-y-auto p-3">
+                {!intel && !busy && (
+                  <p className="text-[12px] text-muted-foreground">
+                    Click research to load hiring contacts, public projects, and
+                    skill gaps vs your profile.
+                  </p>
+                )}
+                {busy && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin" /> Scanning…
+                  </div>
+                )}
+
+                {intel?.readiness && (
+                  <Badge
+                    variant={
+                      intel.readiness === "ready" ? "default" : "secondary"
+                    }
                   >
-                    <div className="overflow-hidden">
-                      <div className="space-y-2.5 border-t border-border/30 bg-muted/15 px-3 pb-3 pt-2">
-                        <p className="line-clamp-4 text-[12px] leading-relaxed text-muted-foreground">
-                          {job.description || "No description available."}
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          <Button
-                            size="sm"
-                            className="h-8 text-[12px]"
-                            disabled={busyId === job.id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void prepare(job.id);
-                            }}
-                          >
-                            {busyId === job.id && (
-                              <Loader2 className="size-3.5 animate-spin" />
-                            )}
-                            {busyId === job.id
-                              ? "Preparing…"
-                              : "Prepare draft"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 text-[12px]"
-                            asChild
-                          >
+                    {intel.readiness}
+                  </Badge>
+                )}
+
+                {intel?.people && intel.people.length > 0 && (
+                  <section>
+                    <h3 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <Users className="size-3.5" /> People
+                    </h3>
+                    <ul className="space-y-2">
+                      {intel.people.map((p, i) => (
+                        <li
+                          key={i}
+                          className="rounded-lg border px-2.5 py-2 text-[12px]"
+                        >
+                          <p className="font-medium">
+                            {p.name}
+                            {p.role ? (
+                              <span className="font-normal text-muted-foreground">
+                                {" "}
+                                · {p.role}
+                              </span>
+                            ) : null}
+                          </p>
+                          <p className="mt-0.5 line-clamp-3 text-[11px] text-muted-foreground">
+                            {p.snippet}
+                          </p>
+                          {p.url && (
                             <a
-                              href={job.externalUrl}
+                              href={p.url}
                               target="_blank"
                               rel="noreferrer"
-                              onClick={(e) => e.stopPropagation()}
+                              className="text-[10px] underline"
                             >
-                              View listing
-                              <ExternalLink className="size-3" />
+                              Profile
                             </a>
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 text-[12px]"
-                            asChild
-                          >
-                            <Link href="/inbox">Inbox</Link>
-                          </Button>
-                        </div>
-                      </div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+
+                {intel?.projects && intel.projects.length > 0 && (
+                  <section>
+                    <h3 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <FolderGit2 className="size-3.5" /> Projects
+                    </h3>
+                    <ul className="space-y-2">
+                      {intel.projects.map((p, i) => (
+                        <li
+                          key={i}
+                          className="rounded-lg border px-2.5 py-2 text-[12px]"
+                        >
+                          <p className="font-medium">{p.title}</p>
+                          <p className="mt-0.5 line-clamp-3 text-[11px] text-muted-foreground">
+                            {p.description}
+                          </p>
+                          {p.url && (
+                            <a
+                              href={p.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[10px] underline"
+                            >
+                              Link
+                            </a>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+
+                {intel?.mentions?.skills && intel.mentions.skills.length > 0 && (
+                  <section>
+                    <h3 className="mb-1.5 text-[11px] font-semibold uppercase text-muted-foreground">
+                      Skills mentioned
+                    </h3>
+                    <div className="flex flex-wrap gap-1">
+                      {intel.mentions.skills.map((s) => (
+                        <Badge key={s} variant="outline" className="text-[10px]">
+                          {s}
+                        </Badge>
+                      ))}
                     </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+                  </section>
+                )}
+
+                {intel?.gaps && intel.gaps.length > 0 && (
+                  <section>
+                    <h3 className="mb-1.5 text-[11px] font-semibold uppercase text-muted-foreground">
+                      Gaps vs you
+                    </h3>
+                    <ul className="space-y-1 text-[11px]">
+                      {intel.gaps.map((g) => (
+                        <li key={g.skill} className="flex justify-between">
+                          <span>{g.skill}</span>
+                          <span
+                            className={
+                              g.have ? "text-emerald-600" : "text-amber-600"
+                            }
+                          >
+                            {g.have ? "have" : "gap"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+
+                {intel?.waitingReasons && intel.waitingReasons.length > 0 && (
+                  <ul className="list-inside list-disc text-[11px] text-muted-foreground">
+                    {intel.waitingReasons.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </>
+          )}
+        </aside>
       </div>
     </div>
   );

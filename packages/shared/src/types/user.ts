@@ -36,6 +36,38 @@ export interface Experience {
   achievements?: string[];
 }
 
+export interface Education {
+  id: string;
+  school: string;
+  degree: string;
+  field?: string;
+  location?: string;
+  startDate?: string;
+  endDate?: string;
+  gpa?: string;
+  coursework?: string[];
+  honors?: string[];
+}
+
+export interface ProjectItem {
+  id: string;
+  name: string;
+  description?: string;
+  url?: string;
+  technologies?: string[];
+  bullets?: string[];
+}
+
+export interface LeadershipItem {
+  id: string;
+  organization: string;
+  role: string;
+  location?: string;
+  startDate?: string;
+  endDate?: string;
+  bullets?: string[];
+}
+
 export interface Profile {
   id: string;
   userId: string;
@@ -44,6 +76,8 @@ export interface Profile {
   summary?: string;
   location?: string;
   phone?: string;
+  /** Used for ATS contact line; optional in demo */
+  email?: string;
   linkedinUrl?: string;
   portfolioUrl?: string;
   githubUrl?: string;
@@ -54,6 +88,11 @@ export interface Profile {
   yearsExperience?: number;
   skills: Skill[];
   experiences: Experience[];
+  education?: Education[];
+  projects?: ProjectItem[];
+  leadership?: LeadershipItem[];
+  certifications?: string[];
+  languages?: string[];
   interests: string[];
   templatePriorities: string[];
 }

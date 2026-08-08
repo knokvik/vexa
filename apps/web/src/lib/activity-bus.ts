@@ -121,7 +121,12 @@ export function reportActivity(
 
 export function subscribeActivity(fn: Listener): () => void {
   listeners().add(fn);
+  fn(g.__vexaActivityCurrent ?? null);
   return () => {
     listeners().delete(fn);
   };
+}
+
+export function getCurrentActivity(): ActivityEvent | null {
+  return g.__vexaActivityCurrent ?? null;
 }

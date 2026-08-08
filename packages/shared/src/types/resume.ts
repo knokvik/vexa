@@ -3,7 +3,19 @@ export type TemplateCategory =
   | "classic"
   | "creative"
   | "minimal"
-  | "technical";
+  | "technical"
+  | "ivy";
+
+export type ResumeSectionType =
+  | "summary"
+  | "objective"
+  | "experience"
+  | "skills"
+  | "education"
+  | "projects"
+  | "leadership"
+  | "additional"
+  | "custom";
 
 export interface ResumeTemplate {
   id: string;
@@ -12,11 +24,19 @@ export interface ResumeTemplate {
   isPremium: boolean;
   atsFriendlyScore: number;
   description?: string;
+  /** University / firm style this layout follows */
+  styleSource?: string;
+  /** Section order for plain-text ATS render */
+  sectionOrder?: ResumeSectionType[];
+  /** Single-column only for ATS */
+  layout?: "single_column";
+  fontFamily?: "Arial" | "Calibri" | "Times New Roman" | "Garamond" | "Trebuchet MS";
+  bestFor?: string;
 }
 
 export interface ResumeSection {
   id: string;
-  type: "summary" | "experience" | "skills" | "education" | "projects" | "custom";
+  type: ResumeSectionType;
   title: string;
   content: string | string[];
   order: number;
@@ -32,6 +52,8 @@ export interface ResumeContent {
     links?: string[];
   };
   sections: ResumeSection[];
+  /** Template used to render this content */
+  templateId?: string;
 }
 
 export interface ResumeVersion {

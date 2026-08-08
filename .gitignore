@@ -39,3 +39,5 @@ data/*.db
 data/*.sqlite
 *.sqlite
 .cache
+
+apps/web/data/uploads/

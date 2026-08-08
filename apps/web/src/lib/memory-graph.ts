@@ -29,6 +29,7 @@ type TaskLike = {
   meta?: Record<string, unknown>;
 };
 
+/** Dark-theme palette (legacy) */
 export const GROUP_COLORS: Record<string, string> = {
   type: "#a78bfa", // purple — task types
   task: "#34d399", // green — task instances
@@ -37,9 +38,28 @@ export const GROUP_COLORS: Record<string, string> = {
   model: "#f472b6", // pink — LLM models
   note: "#94a3b8", // slate — memory notes
   meta: "#fb923c", // orange — meta tags
+  company: "#22d3ee", // cyan — companies applied / tracked
 };
 
-export function buildMemoryGraph(tasks: TaskLike[]): GraphPayload {
+/** Light-theme palette — higher contrast on paper background */
+export const GROUP_COLORS_LIGHT: Record<string, string> = {
+  type: "#7c3aed", // violet
+  task: "#059669", // emerald
+  step: "#2563eb", // blue
+  status: "#d97706", // amber
+  model: "#db2777", // pink
+  note: "#64748b", // slate
+  meta: "#ea580c", // orange
+  company: "#0891b2", // cyan
+};
+
+export function buildMemoryGraph(
+  tasks: TaskLike[],
+  extra?: {
+    nodes?: GraphNode[];
+    links?: GraphLink[];
+  }
+): GraphPayload {
   const nodes = new Map<string, GraphNode>();
   const links: GraphLink[] = [];
   const linkSet = new Set<string>();
@@ -113,6 +133,16 @@ export function buildMemoryGraph(tasks: TaskLike[]): GraphPayload {
     }
   }
 
+  // Merge app memory (companies applied, searches, …)
+  if (extra?.nodes) {
+    for (const n of extra.nodes) {
+      if (!nodes.has(n.id)) nodes.set(n.id, n);
+    }
+  }
+  if (extra?.links) {
+    for (const l of extra.links) addLink(l.source, l.target);
+  }
+
   const groups = [
     { id: "type", label: "TASK TYPES", color: GROUP_COLORS.type },
     { id: "task", label: "TASKS", color: GROUP_COLORS.task },
@@ -121,6 +151,7 @@ export function buildMemoryGraph(tasks: TaskLike[]): GraphPayload {
     { id: "model", label: "MODELS", color: GROUP_COLORS.model },
     { id: "meta", label: "META", color: GROUP_COLORS.meta },
     { id: "note", label: "NOTES", color: GROUP_COLORS.note },
+    { id: "company", label: "COMPANIES", color: GROUP_COLORS.company },
   ];
 
   return {

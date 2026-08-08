@@ -40,6 +40,20 @@ const circuit = {
   openUntil: 0,
 };
 
+/** Live runtime — what model is running / last used (for title bar) */
+const runtime = {
+  currentModel: null as string | null,
+  currentRole: null as string | null,
+  currentStartedAt: null as number | null,
+  lastModel: null as string | null,
+  lastRole: null as string | null,
+  lastAt: null as number | null,
+  lastOk: null as boolean | null,
+  lastError: null as string | null,
+  totalCalls: 0,
+  totalSuccess: 0,
+};
+
 function circuitOpen(): boolean {
   return Date.now() < circuit.openUntil;
 }
@@ -65,6 +79,64 @@ export function getLlmCircuitStatus() {
       ? new Date(circuit.openUntil).toISOString()
       : null,
   };
+}
+
+/** Snapshot for header / health UI — no network call */
+export function getLlmRuntimeStatus() {
+  const cfg = getOpenRouterConfig();
+  const circ = getLlmCircuitStatus();
+  const heuristicOnly = process.env.VEXA_HEURISTIC_ONLY === "true";
+  return {
+    configured: cfg.configured,
+    primary: cfg.model,
+    pool: cfg.models,
+    circuit: circ,
+    heuristicOnly,
+    /** Active OpenRouter model mid-request */
+    running: runtime.currentModel
+      ? {
+          model: runtime.currentModel,
+          role: runtime.currentRole,
+          startedAt: runtime.currentStartedAt
+            ? new Date(runtime.currentStartedAt).toISOString()
+            : null,
+        }
+      : null,
+    last: runtime.lastModel
+      ? {
+          model: runtime.lastModel,
+          role: runtime.lastRole,
+          at: runtime.lastAt
+            ? new Date(runtime.lastAt).toISOString()
+            : null,
+          ok: runtime.lastOk,
+          error: runtime.lastError,
+        }
+      : null,
+    stats: {
+      totalCalls: runtime.totalCalls,
+      totalSuccess: runtime.totalSuccess,
+    },
+    /** Short label for title bar */
+    displayModel: runtime.currentModel
+      ? shortModelName(runtime.currentModel)
+      : runtime.lastModel
+        ? shortModelName(runtime.lastModel)
+        : shortModelName(cfg.model),
+    displayState: !cfg.configured
+      ? "no_key"
+      : heuristicOnly || circ.open
+        ? "heuristic"
+        : runtime.currentModel
+          ? "running"
+          : "idle",
+  };
+}
+
+function shortModelName(model: string): string {
+  // google/gemma-4-26b-a4b-it:free → gemma-4-26b
+  const base = model.split("/").pop() || model;
+  return base.replace(/:free$/i, "").replace(/-instruct$/i, "").slice(0, 28);
 }
 
 export function getOpenRouterConfig() {
@@ -191,10 +263,23 @@ export async function openRouterChat(
   let lastError = "All models failed";
 
   for (const model of models.slice(0, maxAttempts)) {
+    runtime.currentModel = model;
+    runtime.currentRole = opts.role || "default";
+    runtime.currentStartedAt = Date.now();
+    runtime.totalCalls += 1;
     try {
       const result = await callOnce(model, opts);
       attempts.push({ model, ok: true });
       recordSuccess();
+      runtime.lastModel = result.model || model;
+      runtime.lastRole = opts.role || "default";
+      runtime.lastAt = Date.now();
+      runtime.lastOk = true;
+      runtime.lastError = null;
+      runtime.totalSuccess += 1;
+      runtime.currentModel = null;
+      runtime.currentRole = null;
+      runtime.currentStartedAt = null;
       return { ...result, attempts };
     } catch (e) {
       const msg =
@@ -205,9 +290,17 @@ export async function openRouterChat(
           : String(e);
       attempts.push({ model, ok: false, error: msg });
       lastError = msg;
+      runtime.lastModel = model;
+      runtime.lastRole = opts.role || "default";
+      runtime.lastAt = Date.now();
+      runtime.lastOk = false;
+      runtime.lastError = msg;
     }
   }
 
+  runtime.currentModel = null;
+  runtime.currentRole = null;
+  runtime.currentStartedAt = null;
   recordFailure();
   throw new Error(`${lastError} | attempts=${attempts.length}`);
 }

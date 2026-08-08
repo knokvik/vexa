@@ -9,7 +9,10 @@ export function resumeHtmlDocument(opts: {
   subtitle?: string;
   fontFamily?: string;
 }): string {
-  const font = opts.fontFamily || "Arial, Helvetica, sans-serif";
+  // Match sample resume: Trebuchet MS / Arial (never decorative fonts)
+  const font =
+    opts.fontFamily ||
+    '"Trebuchet MS", Arial, Helvetica, sans-serif';
   const title = escapeHtml(opts.title || "Resume");
   const sub = opts.subtitle ? escapeHtml(opts.subtitle) : "";
   const body = escapeHtml(opts.plainText || "").replace(/\n/g, "<br/>");
@@ -139,4 +142,85 @@ export function resumePreviewBlobUrl(opts: {
   const html = resumeHtmlDocument(opts);
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   return URL.createObjectURL(blob);
+}
+
+function safeFileBase(name: string): string {
+  return (name || "Resume")
+    .replace(/\s+/g, "_")
+    .replace(/[^\w.-]/g, "")
+    .slice(0, 80) || "Resume";
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+/** Download plain-text ATS resume (.txt) */
+export function downloadResumeTxt(opts: {
+  plainText: string;
+  fileName?: string;
+}) {
+  const base = safeFileBase(opts.fileName || "Resume");
+  const blob = new Blob([opts.plainText || ""], {
+    type: "text/plain;charset=utf-8",
+  });
+  triggerDownload(blob, `${base}.txt`);
+}
+
+/**
+ * Download letter-formatted HTML (Trebuchet/Arial).
+ * Open in browser → Print → Save as PDF for a real PDF file.
+ */
+export function downloadResumeHtml(opts: {
+  plainText: string;
+  title?: string;
+  subtitle?: string;
+  fontFamily?: string;
+  fileName?: string;
+}) {
+  const base = safeFileBase(opts.fileName || opts.title || "Resume");
+  const html = resumeHtmlDocument(opts);
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  triggerDownload(blob, `${base}.html`);
+}
+
+/**
+ * Open print dialog immediately so user can Save as PDF.
+ * Browsers cannot write a real .pdf without extra libs; print is the reliable path.
+ */
+export function downloadResumePdfViaPrint(opts: {
+  plainText: string;
+  title?: string;
+  subtitle?: string;
+  fontFamily?: string;
+}) {
+  const html = resumeHtmlDocument(opts);
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const w = window.open(url, "_blank", "noopener,noreferrer");
+  if (w) {
+    // Wait for document load then print
+    const tryPrint = () => {
+      try {
+        w.focus();
+        w.print();
+      } catch {
+        /* user can use toolbar button */
+      }
+    };
+    // Some browsers need a short delay
+    setTimeout(tryPrint, 400);
+    setTimeout(() => URL.revokeObjectURL(url), 120_000);
+  } else {
+    // Popup blocked — download HTML instead
+    downloadResumeHtml(opts);
+  }
 }
