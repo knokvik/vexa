@@ -360,15 +360,14 @@ export default function DashboardPage() {
         </p>
 
         <div className="mt-8 w-full max-w-2xl space-y-3">
+          {/* Input border only glows while holding (listening) — not when mic merely armed */}
           <div
             className={cn(
               "vexa-glow-border rounded-3xl bg-card shadow-lg ring-1 ring-black/5 dark:ring-white/10",
-              listening && "is-listening",
-              (inputFocused || listening || micArmed) && "is-active",
-              micArmed && !listening && "is-mic-armed"
+              listening && "is-listening is-active",
+              inputFocused && !micArmed && !listening && "is-active"
             )}
             onPointerDown={(e) => {
-              // Hold anywhere on input shell (not buttons) when mic armed
               if (!micArmed) return;
               const t = e.target as HTMLElement;
               if (t.closest("button") || t.closest("a")) return;
@@ -407,17 +406,17 @@ export default function DashboardPage() {
                     className={cn(
                       "min-h-[52px] w-full resize-none bg-transparent py-2 text-[15px] outline-none placeholder:text-muted-foreground/70",
                       micArmed && "cursor-pointer select-none",
-                      listening && "text-emerald-700 dark:text-emerald-300"
+                      listening && "text-red-700 dark:text-red-300"
                     )}
                     disabled={busy}
                     readOnly={listening}
                   />
                   {listening && (
-                    <div className="pointer-events-none absolute bottom-1 right-1 flex items-end gap-0.5 opacity-60">
+                    <div className="pointer-events-none absolute bottom-1 right-1 flex items-end gap-0.5 opacity-70">
                       {[0, 1, 2, 3].map((i) => (
                         <span
                           key={i}
-                          className="vexa-wave-bars w-0.5 rounded-full bg-sky-500"
+                          className="w-0.5 rounded-full bg-red-500"
                           style={{
                             height: 8 + (i % 3) * 5,
                             animationDelay: `${i * 0.1}s`,
@@ -430,19 +429,23 @@ export default function DashboardPage() {
                   )}
                 </div>
 
+                {/* Mic: red + animated icon when armed; stronger pulse while holding */}
                 <button
                   type="button"
                   className={cn(
                     "mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 transition-all",
-                    micArmed
-                      ? "vexa-mic-armed border-sky-500 bg-sky-500/15 text-sky-600 dark:text-sky-400"
-                      : "border-border bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
-                    listening && "vexa-mic-pulse border-emerald-500 bg-emerald-500 text-white"
+                    !micArmed &&
+                      "border-border bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
+                    micArmed &&
+                      !listening &&
+                      "vexa-mic-icon-pulse border-red-500 bg-red-500/10 text-red-600 dark:text-red-400",
+                    listening &&
+                      "vexa-mic-pulse border-red-600 bg-red-600 text-white"
                   )}
                   title={
                     micArmed
-                      ? "Mic armed — hold input to talk (click to disarm)"
-                      : "Arm mic"
+                      ? "Mic on — hold input to talk (tap mic to turn off)"
+                      : "Turn mic on"
                   }
                   onClick={(e) => {
                     e.stopPropagation();
@@ -450,7 +453,12 @@ export default function DashboardPage() {
                   }}
                   onPointerDown={(e) => e.stopPropagation()}
                 >
-                  <Mic className="size-4" />
+                  <Mic
+                    className={cn(
+                      "size-4",
+                      micArmed && "vexa-mic-icon-spin"
+                    )}
+                  />
                 </button>
 
                 <Button
@@ -472,12 +480,12 @@ export default function DashboardPage() {
               </div>
 
               {micArmed && !listening && (
-                <p className="px-4 pb-2 text-center text-[11px] text-sky-600 dark:text-sky-400">
-                  Mic armed — press & hold the input area to dictate
+                <p className="px-4 pb-2 text-center text-[11px] text-red-600 dark:text-red-400">
+                  Mic on — hold the input bar to dictate
                 </p>
               )}
               {listening && (
-                <p className="px-4 pb-2 text-center text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                <p className="px-4 pb-2 text-center text-[11px] font-medium text-red-600 dark:text-red-400">
                   Listening… release to stop
                   {interim ? ` · “${interim.slice(0, 48)}”` : ""}
                 </p>

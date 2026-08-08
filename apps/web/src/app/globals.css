@@ -203,46 +203,22 @@
     z-index: 0;
   }
   .vexa-glow-border:focus-within::before,
-  .vexa-glow-border.is-listening::before,
   .vexa-glow-border.is-active::before {
     opacity: 1;
     animation: vexa-glow-spin 2.8s linear infinite;
   }
+  /* Input border animates only while holding (listening) — red */
   .vexa-glow-border.is-listening::before {
-    background: conic-gradient(
-      from var(--vexa-glow-angle, 0deg),
-      transparent 0%,
-      rgb(52 211 153 / 0.9) 15%,
-      transparent 35%,
-      rgb(16 185 129 / 0.5) 60%,
-      transparent 85%
-    );
-    animation-duration: 1.4s;
-  }
-  /* Mic armed (click mic) — cool blue ring ready for hold */
-  .vexa-glow-border.is-mic-armed::before {
     opacity: 1;
     background: conic-gradient(
       from var(--vexa-glow-angle, 0deg),
       transparent 0%,
-      rgb(56 189 248 / 0.85) 14%,
-      transparent 32%,
-      rgb(14 165 233 / 0.45) 58%,
-      transparent 82%
+      rgb(248 113 113 / 0.95) 12%,
+      transparent 30%,
+      rgb(239 68 68 / 0.55) 55%,
+      transparent 80%
     );
-    animation: vexa-glow-spin 2.2s linear infinite;
-  }
-  .vexa-mic-armed {
-    animation: vexa-mic-armed-ring 1.6s ease-in-out infinite;
-  }
-  @keyframes vexa-mic-armed-ring {
-    0%,
-    100% {
-      box-shadow: 0 0 0 0 rgb(56 189 248 / 0.4);
-    }
-    50% {
-      box-shadow: 0 0 0 8px rgb(56 189 248 / 0);
-    }
+    animation: vexa-glow-spin 1.3s linear infinite;
   }
   .vexa-glow-border > * {
     position: relative;
@@ -261,17 +237,43 @@
     inherits: false;
   }
 
-  /* Mic pulse while holding */
+  /* Mic button pulse while holding input (listening) — red */
   .vexa-mic-pulse {
     animation: vexa-mic-pulse 1.1s ease-in-out infinite;
   }
   @keyframes vexa-mic-pulse {
     0%,
     100% {
-      box-shadow: 0 0 0 0 rgb(16 185 129 / 0.45);
+      box-shadow: 0 0 0 0 rgb(239 68 68 / 0.5);
     }
     50% {
-      box-shadow: 0 0 0 10px rgb(16 185 129 / 0);
+      box-shadow: 0 0 0 10px rgb(239 68 68 / 0);
+    }
+  }
+
+  /* Mic icon subtle pulse when armed (not holding yet) */
+  .vexa-mic-icon-pulse {
+    animation: vexa-mic-icon-ring 1.4s ease-in-out infinite;
+  }
+  @keyframes vexa-mic-icon-ring {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgb(239 68 68 / 0.35);
+    }
+    50% {
+      box-shadow: 0 0 0 7px rgb(239 68 68 / 0);
+    }
+  }
+  .vexa-mic-icon-spin {
+    animation: vexa-mic-icon-bob 1.2s ease-in-out infinite;
+  }
+  @keyframes vexa-mic-icon-bob {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.12);
     }
   }
 

@@ -63,7 +63,7 @@ export function PinGate({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6">
       <div className="mb-8 flex flex-col items-center gap-3">
-        <VexaLogo size="match" animated={false} />
+        <VexaLogo size="xl" animated={false} />
         <h1 className="text-xl font-semibold tracking-tight">Enter PIN</h1>
         <p className="text-center text-sm text-muted-foreground">
           Private host gate for this session

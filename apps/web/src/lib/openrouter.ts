@@ -148,9 +148,16 @@ export function getOpenRouterConfig() {
     ? poolRaw.split(",").map((s) => s.trim()).filter(Boolean)
     : DEFAULT_POOL;
   const models = [primary, ...pool.filter((m) => m !== primary)];
+  const vercel = (process.env.VERCEL_URL || "").trim();
+  const vercelUrl = vercel
+    ? vercel.startsWith("http")
+      ? vercel
+      : `https://${vercel}`
+    : "";
   const referer =
     process.env.OPENROUTER_HTTP_REFERER?.trim() ||
     process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    vercelUrl ||
     "http://127.0.0.1:5173";
   const title = process.env.OPENROUTER_APP_TITLE?.trim() || "Vexa";
   const defaultMaxTokens = Number(

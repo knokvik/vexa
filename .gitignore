@@ -41,3 +41,7 @@ data/*.sqlite
 .cache
 
 apps/web/data/uploads/
+
+# never commit production secrets
+.env.production
+apps/web/.env.production

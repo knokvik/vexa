@@ -44,11 +44,25 @@ export type ProviderSetupGuide = {
 };
 
 export function getAppUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
-    process.env.APP_URL?.replace(/\/$/, "") ||
-    "http://127.0.0.1:5173"
-  );
+  const fromEnv = (
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.APP_URL ||
+    ""
+  )
+    .trim()
+    .replace(/\/$/, "");
+  // Ignore empty or localhost in production so Vercel domain wins
+  if (
+    fromEnv &&
+    !/localhost|127\.0\.0\.1/i.test(fromEnv)
+  ) {
+    return fromEnv;
+  }
+  const vercel = (process.env.VERCEL_URL || "").trim().replace(/\/$/, "");
+  if (vercel) {
+    return vercel.startsWith("http") ? vercel : `https://${vercel}`;
+  }
+  return fromEnv || "http://127.0.0.1:5173";
 }
 
 export function getStateSecret(): string {
