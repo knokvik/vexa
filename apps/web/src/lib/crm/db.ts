@@ -472,10 +472,140 @@ export async function markActionDone(id: string) {
   });
 }
 
-// ── User tasks (jobs, conferences, personal) ──────────
+// ── User tasks (jobs, conferences, personal, college, interview prep) ──────────
+
+function defaultSeedTasks(): CrmUserTask[] {
+  const now = new Date();
+  const formatIsoHours = (hoursAhead: number) => {
+    return new Date(now.getTime() + hoursAhead * 3600 * 1000).toISOString();
+  };
+
+  return [
+    {
+      id: "task_seed_1",
+      title: "Optimize C++ LOB Matching Engine (benchmark cache misses & lock-free queue)",
+      kind: "project_prep",
+      quadrant: "q1",
+      urgent: true,
+      important: true,
+      dueAt: formatIsoHours(6),
+      notes: "Profile with perf / Valgrind. Target sub-microsecond tick-to-trade latency.",
+      done: false,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    },
+    {
+      id: "task_seed_2",
+      title: "Submit Distributed Systems Assignment: Raft Consensus implementation",
+      kind: "college",
+      quadrant: "q1",
+      urgent: true,
+      important: true,
+      dueAt: formatIsoHours(12),
+      notes: "Upload lab PDF and GitHub repo link to college portal before deadline.",
+      done: false,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    },
+    {
+      id: "task_seed_3",
+      title: "System Design Prep: High-Throughput Market Data Feed Handler & RocksDB",
+      kind: "interview",
+      quadrant: "q2",
+      urgent: false,
+      important: true,
+      dueAt: formatIsoHours(48),
+      notes: "Practice order book reconstruction, sequence numbering, and replay buffers.",
+      done: false,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    },
+    {
+      id: "task_seed_4",
+      title: "Deep Dive into USearch Vector Hybrid Search & SIMD Acceleration",
+      kind: "project_prep",
+      quadrant: "q2",
+      urgent: false,
+      important: true,
+      dueAt: formatIsoHours(72),
+      notes: "Benchmark AVX-512 vs NEON distance kernels on Apple Silicon.",
+      done: false,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    },
+    {
+      id: "task_seed_5",
+      title: "Study for Compiler Design Midterm: LR(1) Parsers & AST Optimizations",
+      kind: "college",
+      quadrant: "q2",
+      urgent: false,
+      important: true,
+      dueAt: formatIsoHours(96),
+      notes: "Solve last 3 years university question papers.",
+      done: false,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    },
+    {
+      id: "task_seed_6",
+      title: "Evening Gym Session: Deadlifts & Upper Body Hypertrophy",
+      kind: "personal",
+      quadrant: "q3",
+      urgent: true,
+      important: false,
+      dueAt: formatIsoHours(4),
+      notes: "Hit 5 sets heavy deadlifts + mobility work.",
+      done: false,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    },
+    {
+      id: "task_seed_7",
+      title: "Reply to College Project Group Chat regarding presentation slides",
+      kind: "college",
+      quadrant: "q3",
+      urgent: true,
+      important: false,
+      dueAt: formatIsoHours(2),
+      notes: "Confirm slide deck template and speaking order.",
+      done: false,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    },
+    {
+      id: "task_seed_8",
+      title: "Meal Prep & Grocery: High Protein Groceries for the Week",
+      kind: "personal",
+      quadrant: "q4",
+      urgent: false,
+      important: false,
+      dueAt: formatIsoHours(40),
+      notes: "Eggs, chicken breast, oats, greek yogurt, peanut butter.",
+      done: false,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    },
+    {
+      id: "task_seed_9",
+      title: "Read Paper: 'Flash Boys & Fast Quotes: Latency in Modern Markets'",
+      kind: "interview",
+      quadrant: "q4",
+      urgent: false,
+      important: false,
+      dueAt: formatIsoHours(120),
+      notes: "Annotate key findings on queue position and adverse selection.",
+      done: false,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    },
+  ];
+}
 
 export async function listUserTasks(includeDone = false) {
   const db = await loadCrm();
+  if (!db.userTasks || db.userTasks.length === 0) {
+    db.userTasks = defaultSeedTasks();
+  }
   const tasks = db.userTasks || [];
   return includeDone ? tasks : tasks.filter((t) => !t.done);
 }
@@ -530,6 +660,9 @@ export async function upsertUserTask(
       dueAt: partial.dueAt,
       notes: partial.notes,
       done: partial.done ?? false,
+      quadrant: partial.quadrant || (partial.urgent && partial.important ? "q1" : !partial.urgent && partial.important ? "q2" : partial.urgent && !partial.important ? "q3" : "q4"),
+      urgent: partial.urgent,
+      important: partial.important,
       createdAt: now,
       updatedAt: now,
     };

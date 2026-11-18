@@ -237,8 +237,12 @@ export type UserTaskKind =
   | "conference"
   | "company"
   | "personal"
+  | "college"
   | "interview"
+  | "project_prep"
   | "other";
+
+export type EisenhowerQuadrant = "q1" | "q2" | "q3" | "q4";
 
 export interface CrmUserTask {
   id: string;
@@ -250,6 +254,9 @@ export interface CrmUserTask {
   dueAt?: string;
   notes?: string;
   done: boolean;
+  quadrant?: EisenhowerQuadrant;
+  urgent?: boolean;
+  important?: boolean;
   createdAt: string;
   updatedAt: string;
 }

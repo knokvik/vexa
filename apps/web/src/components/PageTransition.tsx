@@ -26,7 +26,7 @@ export function PageTransition({ children }: { children: React.ReactNode }) {
     <div
       key={key}
       className={cn(
-        "w-full transition-[opacity,transform] duration-200 ease-out",
+        "w-full h-full transition-[opacity,transform] duration-200 ease-out",
         visible
           ? "translate-y-0 opacity-100"
           : "translate-y-1 opacity-0"

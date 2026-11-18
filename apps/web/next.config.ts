@@ -10,6 +10,22 @@ const nextConfig: NextConfig = {
   experimental: {
     externalDir: true,
   },
+  async rewrites() {
+    return [
+      {
+        source: "/research",
+        destination: "/jobs",
+      },
+      {
+        source: "/board",
+        destination: "/workspace",
+      },
+      {
+        source: "/pipeline",
+        destination: "/workspace",
+      },
+    ];
+  },
 };
 
 export default nextConfig;

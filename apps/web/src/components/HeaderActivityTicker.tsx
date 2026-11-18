@@ -44,7 +44,7 @@ export function HeaderActivityTicker({ className }: { className?: string }) {
       ? running.action
       : line
         ? line.message
-        : "Ready";
+        : "Crawler: Asleep 💤";
 
   const isRun =
     running?.status === "running" || line?.status === "running";

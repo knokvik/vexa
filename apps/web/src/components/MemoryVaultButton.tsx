@@ -8,6 +8,7 @@ import {
   Circle,
   FileText,
   Loader2,
+  Moon,
   Network,
   RefreshCw,
   XCircle,
@@ -189,9 +190,15 @@ export function MemoryVaultButton() {
           variant="ghost"
           size="icon"
           className="vexa-icon-btn relative h-9 w-9 rounded-full"
-          title="Memory vault — companies applied, tasks, graph"
+          title="Memory vault (Jobs crawler: Sleeping 💤)"
         >
           <BookOpen className="h-[1.1rem] w-[1.1rem]" />
+          <span
+            className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-slate-900 border border-indigo-500/40 text-[8px] text-indigo-300"
+            title="Jobs crawler sleeping"
+          >
+            <Moon className="size-2 text-indigo-400" />
+          </span>
           {companies.length > 0 && (
             <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-cyan-500 px-1 text-[9px] font-semibold text-black">
               {companies.length > 99 ? "99+" : companies.length}
@@ -268,6 +275,15 @@ export function MemoryVaultButton() {
             Light graph settles then freezes so you can read it. Cyan = companies.
             Drag nodes to rearrange; click green tasks for notes.
           </SheetDescription>
+          <div className="mt-2 flex items-center justify-between rounded-xl border border-indigo-500/25 bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-300">
+            <div className="flex items-center gap-2">
+              <span className="size-2 rounded-full bg-indigo-400" />
+              <span>Jobs Crawler & Background Jobs: <strong>Sleeping 💤</strong></span>
+            </div>
+            <span className="rounded bg-indigo-500/20 px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider text-indigo-200">
+              Dormant Mode
+            </span>
+          </div>
         </SheetHeader>
 
         {tab === "graph" && (

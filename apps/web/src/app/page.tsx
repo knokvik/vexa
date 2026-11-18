@@ -1,418 +1,1011 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ArrowUp,
-  Briefcase,
+  ArrowLeft,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  Clock,
+  Flame,
+  GraduationCap,
+  Heart,
+  Layers,
   Loader2,
-  Mail,
-  Mic,
-  Network,
+  Plus,
+  RotateCcw,
+  Search,
   Sparkles,
-  Table2,
+  Target,
+  Trash2,
+  Wrench,
+  X,
+  Zap,
 } from "lucide-react";
+import type { CrmUserTask, EisenhowerQuadrant, UserTaskKind } from "@vexa/shared";
 import { Button } from "@/components/ui/button";
-import { ContributionGraph } from "@/components/dashboard/ContributionGraph";
-import { TypewriterTitle } from "@/components/TypewriterTitle";
-import { PromptStack } from "@/components/PromptStack";
-import { HistorySheet } from "@/components/HistorySheet";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { useSearchDialog } from "@/components/SearchProvider";
-import {
-  loadHistory,
-  type HistoryEntry,
-} from "@/lib/command-history";
-import {
-  createSession,
-  titleFromPrompt,
-} from "@/lib/chat-sessions";
 
-const QUICK = [
-  {
-    label: "Drop email",
-    hint: "From: recruiter@company.com\nSubject: Application update\n\nWe received your application…",
-    icon: Mail,
+type TaskCategoryKey = "personal" | "college" | "interview" | "other";
+
+interface CategoryMeta {
+  key: TaskCategoryKey;
+  label: string;
+  icon: typeof Heart;
+  colorName: string;
+  chipBorder: string;
+  chipBg: string;
+  chipText: string;
+  dotColor: string;
+}
+
+const CATEGORIES: Record<TaskCategoryKey, CategoryMeta> = {
+  personal: {
+    key: "personal",
+    label: "Personal",
+    icon: Heart,
+    colorName: "pink",
+    chipBorder: "border-pink-500/60 hover:border-pink-400",
+    chipBg: "bg-pink-500/15 hover:bg-pink-500/25 dark:bg-pink-950/40",
+    chipText: "text-pink-300 dark:text-pink-200",
+    dotColor: "bg-pink-400",
   },
-  { label: "Find jobs", hint: "software engineer remote", icon: Briefcase },
-  { label: "Tables", hint: "What's in my tables?", icon: Table2 },
-  { label: "Scrapers", hint: "Service status", icon: Network },
-  { label: "Briefing", hint: "Morning briefing", icon: Sparkles },
+  college: {
+    key: "college",
+    label: "College",
+    icon: GraduationCap,
+    colorName: "green",
+    chipBorder: "border-emerald-500/60 hover:border-emerald-400",
+    chipBg: "bg-emerald-500/15 hover:bg-emerald-500/25 dark:bg-emerald-950/40",
+    chipText: "text-emerald-300 dark:text-emerald-200",
+    dotColor: "bg-emerald-400",
+  },
+  interview: {
+    key: "interview",
+    label: "Prep / Projects",
+    icon: Zap,
+    colorName: "cyan",
+    chipBorder: "border-cyan-500/60 hover:border-cyan-400",
+    chipBg: "bg-cyan-500/15 hover:bg-cyan-500/25 dark:bg-cyan-950/40",
+    chipText: "text-cyan-300 dark:text-cyan-200",
+    dotColor: "bg-cyan-400",
+  },
+  other: {
+    key: "other",
+    label: "Career",
+    icon: Wrench,
+    colorName: "amber",
+    chipBorder: "border-amber-500/60 hover:border-amber-400",
+    chipBg: "bg-amber-500/15 hover:bg-amber-500/25 dark:bg-amber-950/40",
+    chipText: "text-amber-300 dark:text-amber-200",
+    dotColor: "bg-amber-400",
+  },
+};
+
+function resolveCategory(kind?: string): CategoryMeta {
+  if (!kind) return CATEGORIES.personal;
+  if (kind === "personal") return CATEGORIES.personal;
+  if (kind === "college") return CATEGORIES.college;
+  if (
+    kind === "interview" ||
+    kind === "project_prep" ||
+    kind.includes("interview") ||
+    kind.includes("prep") ||
+    kind.includes("project")
+  ) {
+    return CATEGORIES.interview;
+  }
+  return CATEGORIES.other;
+}
+
+interface QuadrantConfig {
+  id: EisenhowerQuadrant;
+  label: string;
+  tag: string;
+  icon: typeof Flame;
+  accentText: string;
+}
+
+const QUADRANTS: QuadrantConfig[] = [
+  {
+    id: "q1",
+    label: "Q1 · Urgent & Important",
+    tag: "DO FIRST",
+    icon: Flame,
+    accentText: "text-rose-400",
+  },
+  {
+    id: "q2",
+    label: "Q2 · Not Urgent & Important",
+    tag: "DEEP WORK",
+    icon: Target,
+    accentText: "text-cyan-400",
+  },
+  {
+    id: "q3",
+    label: "Q3 · Urgent & Not Important",
+    tag: "DELEGATE / QUICK",
+    icon: Clock,
+    accentText: "text-amber-400",
+  },
+  {
+    id: "q4",
+    label: "Q4 · Not Urgent & Not Important",
+    tag: "BACKLOG",
+    icon: Layers,
+    accentText: "text-indigo-400",
+  },
 ];
 
-type SpeechRec = {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start: () => void;
-  stop: () => void;
-  onresult: ((ev: SpeechRecognitionEventLike) => void) | null;
-  onerror: ((ev: { error: string }) => void) | null;
-  onend: (() => void) | null;
-};
-
-type SpeechRecognitionEventLike = {
-  resultIndex: number;
-  results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }>;
-};
-
-export default function DashboardPage() {
-  const router = useRouter();
-  const { openSearch } = useSearchDialog();
-  const [text, setText] = useState("");
-  const [name, setName] = useState("");
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [sheetEntry, setSheetEntry] = useState<HistoryEntry | null>(null);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [micArmed, setMicArmed] = useState(false);
-  const [listening, setListening] = useState(false);
-  const [interim, setInterim] = useState("");
-  const [micError, setMicError] = useState("");
-  const [inputFocused, setInputFocused] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const taRef = useRef<HTMLTextAreaElement>(null);
-  const recRef = useRef<SpeechRec | null>(null);
-  const baseTextRef = useRef("");
-  const holdingRef = useRef(false);
-
-  useEffect(() => {
-    setHistory(loadHistory());
-    void fetch("/api/profile")
-      .then((r) => r.json())
-      .then((d) => setName(d.profile?.fullName?.split(" ")[0] || "Niraj"))
-      .catch(() => setName("Niraj"));
-
-    // Refresh prompt list when returning from chat
-    const onFocus = () => {
-      setHistory(loadHistory());
-      setRefreshKey((k) => k + 1);
+function formatShortDeadline(dueAt?: string): { text: string; overdue: boolean } {
+  if (!dueAt) return { text: "", overdue: false };
+  try {
+    const d = new Date(dueAt);
+    if (isNaN(d.getTime())) return { text: dueAt, overdue: false };
+    const diffHours = Math.round((d.getTime() - Date.now()) / (1000 * 60 * 60));
+    if (diffHours < 0) {
+      const pastH = Math.abs(diffHours);
+      return { text: pastH < 24 ? `-${pastH}h` : `-${Math.round(pastH / 24)}d`, overdue: true };
+    }
+    if (diffHours <= 1) return { text: "<1h", overdue: false };
+    if (diffHours <= 24) return { text: `${diffHours}h`, overdue: false };
+    return {
+      text: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      overdue: false,
     };
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") onFocus();
-    });
-    return () => window.removeEventListener("focus", onFocus);
+  } catch {
+    return { text: dueAt, overdue: false };
+  }
+}
+
+/**
+ * Organic position offset for scattering chips naturally (NO ROTATION / TILT).
+ */
+function getOrganicOffsets(id: string, index: number) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash << 5) - hash + id.charCodeAt(i);
+    hash |= 0;
+  }
+  const positive = Math.abs(hash);
+  const marginLeft = ((positive % 6) * 12) + ((index % 2) * 8);
+  const marginTop = (positive % 4) * 3;
+
+  return {
+    marginLeft: `${marginLeft}px`,
+    marginTop: `${marginTop}px`,
+  };
+}
+
+export default function EisenhowerMatrixPage() {
+  const [tasks, setTasks] = useState<CrmUserTask[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch] = useState("");
+  const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [isTableView, setIsTableView] = useState(false);
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+
+  // Quick Add State
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [targetQuadrant, setTargetQuadrant] = useState<EisenhowerQuadrant>("q1");
+  const [newTitle, setNewTitle] = useState("");
+  const [newCategory, setNewCategory] = useState<UserTaskKind>("personal");
+  const [newDueAt, setNewDueAt] = useState("");
+  const [savingNew, setSavingNew] = useState(false);
+
+  const loadTasks = useCallback(async (isSilent = false) => {
+    if (!isSilent) setRefreshing(true);
+    try {
+      const res = await fetch("/api/crm/tasks?all=1");
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.tasks)) {
+        setTasks(data.tasks);
+      }
+    } catch (e) {
+      console.error("Failed to load tasks", e);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
-  /** New message → open chat; each reply is also saved as a prompt card */
-  function openChat(prompt?: string) {
-    const q = (prompt ?? text).trim();
-    if (!q) return;
-    setBusy(true);
-    const session = createSession(titleFromPrompt(q));
-    router.push(`/chat?id=${session.id}&q=${encodeURIComponent(q)}`);
-  }
+  useEffect(() => {
+    void loadTasks(false);
+  }, [loadTasks]);
 
-  function getRecognition(): SpeechRec | null {
-    if (typeof window === "undefined") return null;
-    const W = window as unknown as {
-      SpeechRecognition?: new () => SpeechRec;
-      webkitSpeechRecognition?: new () => SpeechRec;
-    };
-    const Ctor = W.SpeechRecognition || W.webkitSpeechRecognition;
-    if (!Ctor) return null;
-    return new Ctor();
-  }
-
-  async function ensureMicPermission(): Promise<boolean> {
-    if (
-      typeof navigator === "undefined" ||
-      !navigator.mediaDevices?.getUserMedia
-    ) {
-      setMicError("Mic needs HTTPS and a modern browser");
-      return false;
-    }
+  const toggleComplete = async (task: CrmUserTask) => {
+    const nextDone = !task.done;
+    setTasks((prev) =>
+      prev.map((t) => (t.id === task.id ? { ...t, done: nextDone } : t))
+    );
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((t) => t.stop());
-      return true;
+      await fetch("/api/crm/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: task.id,
+          title: task.title,
+          kind: task.kind,
+          done: nextDone,
+          quadrant: task.quadrant,
+          dueAt: task.dueAt,
+        }),
+      });
+    } catch {
+      void loadTasks(true);
+    }
+  };
+
+  const moveQuadrant = async (
+    taskId: string,
+    nextQuadrant: EisenhowerQuadrant
+  ) => {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, quadrant: nextQuadrant } : t))
+    );
+    try {
+      const t = tasks.find((x) => x.id === taskId);
+      if (!t) return;
+      await fetch("/api/crm/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: taskId,
+          title: t.title,
+          kind: t.kind,
+          done: t.done,
+          quadrant: nextQuadrant,
+          dueAt: t.dueAt,
+        }),
+      });
+    } catch {
+      void loadTasks(true);
+    }
+  };
+
+  const deleteTask = async (taskId: string) => {
+    setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    try {
+      await fetch(`/api/crm/tasks?id=${encodeURIComponent(taskId)}`, {
+        method: "DELETE",
+      });
+    } catch {
+      void loadTasks(true);
+    }
+  };
+
+  const handleCreateTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim()) return;
+    setSavingNew(true);
+    try {
+      const res = await fetch("/api/crm/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newTitle.trim(),
+          kind: newCategory,
+          quadrant: targetQuadrant,
+          dueAt: newDueAt || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok && data.task) {
+        setTasks((prev) => [data.task, ...prev]);
+        setNewTitle("");
+        setNewDueAt("");
+        setAddModalOpen(false);
+      }
     } catch (e) {
-      const n = e instanceof DOMException ? e.name : "";
-      if (n === "NotAllowedError" || n === "PermissionDeniedError") {
-        setMicError("Mic blocked — allow microphone for this site, then retry");
-      } else {
-        setMicError("Microphone not available");
-      }
-      return false;
+      console.error("Failed to create task", e);
+    } finally {
+      setSavingNew(false);
     }
-  }
+  };
 
-  async function startListenOnInput() {
-    if (!micArmed || listening) return;
-    setMicError("");
-    holdingRef.current = true;
-    const ok = await ensureMicPermission();
-    if (!ok || !holdingRef.current) return;
-    const rec = getRecognition();
-    if (!rec) {
-      setMicError("Speech not supported — type instead (try Chrome)");
-      return;
-    }
-    baseTextRef.current = text;
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.lang = navigator.language || "en-US";
-    rec.onresult = (ev) => {
-      let finalChunk = "";
-      let interimChunk = "";
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        const t = ev.results[i][0].transcript;
-        if (ev.results[i].isFinal) finalChunk += t;
-        else interimChunk += t;
-      }
-      if (finalChunk) {
-        baseTextRef.current = (baseTextRef.current + " " + finalChunk)
-          .replace(/\s+/g, " ")
-          .trim();
-        setText(baseTextRef.current);
-        setInterim("");
-      } else {
-        setInterim(interimChunk);
-      }
-    };
-    rec.onerror = (e) => {
-      if (e.error === "not-allowed") {
-        setMicError("Mic not allowed — enable in browser site settings");
-      } else if (e.error !== "aborted" && e.error !== "no-speech") {
-        setMicError(e.error);
-      }
-      setListening(false);
-    };
-    rec.onend = () => setListening(false);
-    recRef.current = rec;
-    try {
-      rec.start();
-      setListening(true);
-    } catch {
-      setMicError("Could not start speech");
-    }
-  }
+  const setPresetDeadline = (hoursAhead: number) => {
+    const d = new Date(Date.now() + hoursAhead * 3600 * 1000);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const local = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
+      d.getDate()
+    )}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    setNewDueAt(local);
+  };
 
-  function stopListenOnInput() {
-    if (!holdingRef.current && !listening) return;
-    holdingRef.current = false;
-    try {
-      recRef.current?.stop();
-    } catch {
-      /* ignore */
-    }
-    recRef.current = null;
-    setListening(false);
-    setInterim("");
-    if (baseTextRef.current) setText(baseTextRef.current);
-  }
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.setData("text/plain", id);
+    setDraggedTaskId(id);
+  };
 
-  function armMic() {
-    if (listening) stopListenOnInput();
-    setMicArmed((a) => {
-      const next = !a;
-      if (!next) setMicError("");
-      return next;
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent, q: EisenhowerQuadrant) => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData("text/plain") || draggedTaskId;
+    if (id) {
+      void moveQuadrant(id, q);
+    }
+    setDraggedTaskId(null);
+  };
+
+  // Active uncompleted tasks for the matrix
+  const filteredActiveTasks = useMemo(() => {
+    return tasks.filter((t) => {
+      if (t.done) return false;
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        if (!t.title.toLowerCase().includes(q) && !t.notes?.toLowerCase().includes(q)) {
+          return false;
+        }
+      }
+      if (filterCategory !== "all") {
+        const cat = resolveCategory(t.kind);
+        if (cat.key !== filterCategory) return false;
+      }
+      return true;
     });
-    setInterim("");
-  }
+  }, [tasks, search, filterCategory]);
 
-  function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter" && !e.shiftKey && !listening) {
-      e.preventDefault();
-      if (text.trim()) openChat();
+  // Completed tasks for the table view
+  const completedTasks = useMemo(() => {
+    return tasks.filter((t) => {
+      if (!t.done) return false;
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        if (!t.title.toLowerCase().includes(q) && !t.notes?.toLowerCase().includes(q)) {
+          return false;
+        }
+      }
+      if (filterCategory !== "all") {
+        const cat = resolveCategory(t.kind);
+        if (cat.key !== filterCategory) return false;
+      }
+      return true;
+    });
+  }, [tasks, search, filterCategory]);
+
+  const tasksByQuadrant = useMemo(() => {
+    const map: Record<EisenhowerQuadrant, CrmUserTask[]> = {
+      q1: [],
+      q2: [],
+      q3: [],
+      q4: [],
+    };
+    for (const t of filteredActiveTasks) {
+      let q: EisenhowerQuadrant = t.quadrant || "q2";
+      if (!t.quadrant) {
+        if (t.urgent && t.important) q = "q1";
+        else if (!t.urgent && t.important) q = "q2";
+        else if (t.urgent && !t.important) q = "q3";
+        else q = "q4";
+      }
+      if (map[q]) {
+        map[q].push(t);
+      } else {
+        map.q2.push(t);
+      }
     }
-  }
+    return map;
+  }, [filteredActiveTasks]);
 
-  const displayValue = listening
-    ? `${text}${text && interim ? " " : ""}${interim}`
-    : text;
+  const categoryCounts = useMemo(() => {
+    const counts = { all: 0, personal: 0, college: 0, interview: 0, other: 0 };
+    for (const t of tasks.filter((x) => !x.done)) {
+      counts.all++;
+      const c = resolveCategory(t.kind);
+      counts[c.key] = (counts[c.key] || 0) + 1;
+    }
+    return counts;
+  }, [tasks]);
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-1 pb-4">
-      <section className="flex flex-col items-center pb-4 pt-8 sm:pt-12">
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-          Vexa
-        </p>
-        <TypewriterTitle name={name || "Niraj"} />
-        <p className="mt-2 text-center text-sm text-muted-foreground">
-          {micArmed
-            ? "Mic on — hold the input to speak, release when done"
-            : "Type to chat · prompts stack below · tap for details"}
-        </p>
-
-        <div className="mt-8 w-full max-w-2xl space-y-3">
-          <div
+    <div className="flex h-full w-full flex-col gap-2.5 overflow-hidden select-none">
+      {/* ── Compact Controls Toolbar ── */}
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+        {/* Category Filter Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto vexa-scroll-hide py-0.5">
+          <button
+            type="button"
+            onClick={() => setFilterCategory("all")}
             className={cn(
-              "vexa-glow-border rounded-3xl bg-card shadow-lg ring-1 ring-black/5 dark:ring-white/10",
-              listening && "is-listening is-active",
-              inputFocused && !micArmed && !listening && "is-active"
+              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-all",
+              filterCategory === "all"
+                ? "bg-foreground text-background shadow-sm"
+                : "bg-muted/70 text-muted-foreground hover:text-foreground"
             )}
-            onPointerDown={(e) => {
-              if (!micArmed) return;
-              const t = e.target as HTMLElement;
-              if (t.closest("button") || t.closest("a")) return;
-              e.preventDefault();
-              void startListenOnInput();
-            }}
-            onPointerUp={() => {
-              if (micArmed) stopListenOnInput();
-            }}
-            onPointerLeave={() => {
-              if (micArmed && listening) stopListenOnInput();
-            }}
-            onPointerCancel={() => stopListenOnInput()}
           >
-            <div className="rounded-3xl bg-card">
-              <div className="flex items-end gap-1.5 px-3 pb-3 pt-3 sm:gap-2 sm:px-4">
-                <div className="relative min-h-[52px] flex-1">
-                  <textarea
-                    ref={taRef}
-                    value={displayValue}
-                    onChange={(e) => {
-                      if (!listening) setText(e.target.value);
-                    }}
-                    onFocus={() => setInputFocused(true)}
-                    onBlur={() => setInputFocused(false)}
-                    onKeyDown={onKeyDown}
-                    rows={Math.min(
-                      6,
-                      Math.max(2, displayValue.split("\n").length)
+            <span>All</span>
+            <span className="text-[10px] opacity-75">({categoryCounts.all})</span>
+          </button>
+
+          {/* Personal (Pink Neon) */}
+          <button
+            type="button"
+            onClick={() => setFilterCategory("personal")}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all",
+              filterCategory === "personal"
+                ? "border-pink-500 bg-pink-500 text-white"
+                : "border-pink-500/40 bg-pink-500/10 text-pink-300 hover:border-pink-400"
+            )}
+          >
+            <span className="size-1.5 rounded-full bg-pink-400" />
+            <span>Personal</span>
+            <span className="text-[10px] opacity-80">{categoryCounts.personal}</span>
+          </button>
+
+          {/* College (Green Neon) */}
+          <button
+            type="button"
+            onClick={() => setFilterCategory("college")}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all",
+              filterCategory === "college"
+                ? "border-emerald-500 bg-emerald-500 text-white"
+                : "border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400"
+            )}
+          >
+            <span className="size-1.5 rounded-full bg-emerald-400" />
+            <span>College</span>
+            <span className="text-[10px] opacity-80">{categoryCounts.college}</span>
+          </button>
+
+          {/* Interview Prep & Projects (Cyan Neon) */}
+          <button
+            type="button"
+            onClick={() => setFilterCategory("interview")}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all",
+              filterCategory === "interview"
+                ? "border-cyan-500 bg-cyan-500 text-white"
+                : "border-cyan-500/40 bg-cyan-500/10 text-cyan-300 hover:border-cyan-400"
+            )}
+          >
+            <span className="size-1.5 rounded-full bg-cyan-400" />
+            <span>Prep / Projects</span>
+            <span className="text-[10px] opacity-80">{categoryCounts.interview}</span>
+          </button>
+        </div>
+
+        {/* Right Tools: Search + Add Task */}
+        <div className="flex items-center gap-1.5 ml-auto">
+          <div className="relative w-36 sm:w-48">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search tasks…"
+              className="h-7 rounded-full pl-7 pr-6 text-xs"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-2.5" />
+              </button>
+            )}
+          </div>
+
+          <Button
+            onClick={() => {
+              setTargetQuadrant("q1");
+              setAddModalOpen(true);
+            }}
+            size="sm"
+            className="h-7 gap-1 rounded-full bg-primary px-3 text-xs font-semibold shadow-sm hover:opacity-90"
+          >
+            <Plus className="size-3.5" />
+            <span>Add</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* ── Single Box with Morphing View (Matrix ⟷ Completed Table) ── */}
+      <div className="relative flex-1 rounded-2xl border border-border/80 bg-card/40 backdrop-blur-xl overflow-hidden shadow-sm">
+        
+        {/* Toggle Button at the Center (rotates arrow to opposite direction when toggled) */}
+        <button
+          type="button"
+          onClick={() => setIsTableView((prev) => !prev)}
+          className={cn(
+            "group/center absolute left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2",
+            "flex size-7 items-center justify-center rounded-full border border-border/90 bg-background/95 shadow-md backdrop-blur-md",
+            "hover:scale-110 hover:border-primary/80 hover:bg-muted/90 transition-all duration-300"
+          )}
+          title={isTableView ? "Transform back to Eisenhower Matrix" : `Transform to Completed Tasks Table (${completedTasks.length} tasks)`}
+        >
+          <ChevronDown
+            className={cn(
+              "size-3.5 text-muted-foreground group-hover/center:text-foreground transition-transform duration-300",
+              isTableView ? "rotate-180 -translate-y-0.5" : "group-hover/center:translate-y-0.5"
+            )}
+          />
+          {!isTableView && completedTasks.length > 0 && (
+            <span className="absolute -top-1 -right-1 flex size-3.5 items-center justify-center rounded-full bg-emerald-500 text-[8px] font-bold text-black">
+              {completedTasks.length}
+            </span>
+          )}
+        </button>
+
+        {/* ── VIEW 1: Eisenhower Matrix 2x2 Grid ── */}
+        <div
+          className={cn(
+            "absolute inset-0 h-full w-full transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]",
+            isTableView
+              ? "opacity-0 scale-[0.98] pointer-events-none -translate-y-2"
+              : "opacity-100 scale-100 translate-y-0"
+          )}
+        >
+          {/* Subtle Cross Hair Grid Dividers */}
+          <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 -translate-y-1/2 border-t border-border/70 dark:border-white/10" />
+          <div className="pointer-events-none absolute inset-y-0 left-1/2 z-10 -translate-x-1/2 border-l border-border/70 dark:border-white/10" />
+
+          {/* 2x2 Quadrant Grid */}
+          <div className="grid h-full w-full grid-cols-2 grid-rows-2">
+            {QUADRANTS.map((quad) => {
+              const quadTasks = tasksByQuadrant[quad.id] || [];
+              const Icon = quad.icon;
+
+              return (
+                <div
+                  key={quad.id}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, quad.id)}
+                  className="relative flex flex-col min-h-0 overflow-hidden p-2 sm:p-3 transition-colors hover:bg-muted/10"
+                >
+                  {/* Quadrant Mini Header */}
+                  <div className="flex shrink-0 items-center justify-between gap-1 pb-1.5 border-b border-border/30">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <Icon className={cn("size-3.5 shrink-0", quad.accentText)} />
+                      <span className="text-xs font-semibold tracking-tight text-foreground truncate">
+                        {quad.label}
+                      </span>
+                      <span className="rounded bg-muted/80 px-1 py-0.2 text-[9px] font-mono uppercase tracking-wider text-muted-foreground">
+                        {quad.tag}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-muted/80 px-1 text-[10px] font-bold text-foreground">
+                        {quadTasks.length}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTargetQuadrant(quad.id);
+                          setAddModalOpen(true);
+                        }}
+                        className="size-5 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground"
+                        title={`Add task to ${quad.tag}`}
+                      >
+                        <Plus className="size-3" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Scattered chips area (No angle tilt, naturally positioned within quadrant) */}
+                  <div className="flex-1 min-h-0 overflow-y-auto vexa-scroll-hide p-2 flex flex-wrap content-start items-start gap-2.5">
+                    {loading ? (
+                      <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+                        <Loader2 className="mr-1.5 size-3.5 animate-spin text-primary" />
+                        Loading…
+                      </div>
+                    ) : quadTasks.length === 0 ? (
+                      <div className="flex h-full w-full items-center justify-center text-[11px] text-muted-foreground/60 italic">
+                        Empty · drop chip or click +
+                      </div>
+                    ) : (
+                      quadTasks.map((task, idx) => {
+                        const cat = resolveCategory(task.kind);
+                        const deadline = formatShortDeadline(task.dueAt);
+                        const offsets = getOrganicOffsets(task.id, idx);
+
+                        return (
+                          <div
+                            key={task.id}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, task.id)}
+                            style={{
+                              marginLeft: offsets.marginLeft,
+                              marginTop: offsets.marginTop,
+                            }}
+                            className={cn(
+                              "group/chip relative inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs cursor-grab active:cursor-grabbing",
+                              "transition-all duration-300 ease-out hover:z-20 hover:scale-[1.02]",
+                              "max-w-[190px] hover:max-w-[420px]",
+                              cat.chipBorder,
+                              cat.chipBg
+                            )}
+                          >
+                            {/* Complete Checkbox */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void toggleComplete(task);
+                              }}
+                              className="size-3 shrink-0 rounded-full border border-current opacity-70 hover:opacity-100 flex items-center justify-center transition-all"
+                              title="Mark completed"
+                            >
+                              <span className="size-1 rounded-full bg-current opacity-40 group-hover/chip:opacity-100" />
+                            </button>
+
+                            {/* Category Dot */}
+                            <span className={cn("size-1.5 shrink-0 rounded-full", cat.dotColor)} />
+
+                            {/* Task Title: Compact by default, smoothly expands on hover */}
+                            <span
+                              className={cn(
+                                "truncate font-medium text-[11px] tracking-tight transition-[max-width,color] duration-300 ease-out",
+                                "max-w-[85px] group-hover/chip:max-w-[280px]",
+                                cat.chipText
+                              )}
+                              title={task.title}
+                            >
+                              {task.title}
+                            </span>
+
+                            {/* Deadline Tag */}
+                            {deadline.text && (
+                              <span
+                                className={cn(
+                                  "shrink-0 rounded-full px-1.5 py-0.2 text-[9px] font-mono",
+                                  deadline.overdue
+                                    ? "bg-rose-500/20 text-rose-300 font-bold border border-rose-500/40"
+                                    : "bg-black/25 dark:bg-white/10 text-muted-foreground"
+                                )}
+                              >
+                                {deadline.text}
+                              </span>
+                            )}
+
+                            {/* Quick Actions on Hover */}
+                            <div className="opacity-0 group-hover/chip:opacity-100 transition-opacity flex items-center gap-0.5 ml-0.5 shrink-0">
+                              {(["q1", "q2", "q3", "q4"] as const).map((targetQ) => {
+                                if (targetQ === quad.id) return null;
+                                return (
+                                  <button
+                                    key={targetQ}
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void moveQuadrant(task.id, targetQ);
+                                    }}
+                                    className="size-4 rounded text-[8px] font-mono uppercase bg-black/30 hover:bg-black/60 dark:bg-white/10 dark:hover:bg-white/20 text-muted-foreground hover:text-foreground flex items-center justify-center"
+                                    title={`Move to ${targetQ.toUpperCase()}`}
+                                  >
+                                    {targetQ.toUpperCase()}
+                                  </button>
+                                );
+                              })}
+
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void deleteTask(task.id);
+                                }}
+                                className="size-4 rounded text-[8px] hover:bg-destructive/20 text-muted-foreground hover:text-destructive flex items-center justify-center"
+                                title="Delete task"
+                              >
+                                <Trash2 className="size-2.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
                     )}
-                    placeholder={
-                      micArmed
-                        ? "Hold here and speak…"
-                        : "Ask about tables · add tasks · find jobs…"
-                    }
-                    className={cn(
-                      "min-h-[52px] w-full resize-none bg-transparent py-2 text-[15px] outline-none placeholder:text-muted-foreground/70",
-                      micArmed && "cursor-pointer select-none",
-                      listening && "text-red-700 dark:text-red-300"
-                    )}
-                    disabled={busy}
-                    readOnly={listening}
-                  />
+                  </div>
                 </div>
+              );
+            })}
+          </div>
+        </div>
 
-                <button
-                  type="button"
-                  className={cn(
-                    "mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 transition-all",
-                    !micArmed &&
-                      "border-border bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
-                    micArmed &&
-                      !listening &&
-                      "vexa-mic-icon-pulse border-red-500 bg-red-500/10 text-red-600 dark:text-red-400",
-                    listening &&
-                      "vexa-mic-pulse border-red-600 bg-red-600 text-white"
-                  )}
-                  title={micArmed ? "Mic on" : "Arm mic"}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    armMic();
-                  }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                >
-                  <Mic
-                    className={cn("size-4", micArmed && "vexa-mic-icon-spin")}
-                  />
-                </button>
-
-                <Button
-                  size="icon"
-                  className="mb-0.5 h-9 w-9 shrink-0 rounded-full"
-                  disabled={busy || !text.trim()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openChat();
-                  }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                >
-                  {busy ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <ArrowUp className="size-4" />
-                  )}
-                </Button>
+        {/* ── VIEW 2: Transformed Completed Tasks Table ── */}
+        <div
+          className={cn(
+            "absolute inset-0 h-full w-full flex flex-col p-4 sm:p-5 transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]",
+            isTableView
+              ? "opacity-100 scale-100 translate-y-0"
+              : "opacity-0 scale-[0.98] pointer-events-none translate-y-2"
+          )}
+        >
+          {/* Table Header Bar */}
+          <div className="flex shrink-0 items-center justify-between border-b border-border/50 pb-3">
+            <div className="flex items-center gap-2">
+              <div className="flex size-7 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-400">
+                <CheckCircle2 className="size-4" />
               </div>
-
-              {micArmed && !listening && (
-                <p className="px-4 pb-2 text-center text-[11px] text-red-600 dark:text-red-400">
-                  Mic on — hold the input bar to dictate
+              <div>
+                <h2 className="text-sm font-semibold tracking-tight text-foreground">
+                  Completed Tasks History
+                </h2>
+                <p className="text-[11px] text-muted-foreground">
+                  {completedTasks.length} task{completedTasks.length === 1 ? "" : "s"} accomplished
                 </p>
-              )}
-              {listening && (
-                <p className="px-4 pb-2 text-center text-[11px] font-medium text-red-600 dark:text-red-400">
-                  Listening… release to stop
-                </p>
-              )}
-              {micError && (
-                <p className="px-4 pb-2 text-center text-[11px] text-destructive">
-                  {micError}
-                </p>
-              )}
+              </div>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-1.5 px-1">
-            {QUICK.map((q) => (
-              <button
-                key={q.label}
-                type="button"
-                className="inline-flex items-center gap-1 rounded-full border bg-muted/40 px-2.5 py-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
-                onClick={() => {
-                  if (q.label === "Find jobs" && !text) {
-                    openSearch();
-                    return;
-                  }
-                  if (q.label === "Tables") {
-                    openChat(q.hint);
-                    return;
-                  }
-                  setText(q.hint);
-                  taRef.current?.focus();
-                }}
-              >
-                <q.icon className="size-3" />
-                {q.label}
-              </button>
-            ))}
-            <Link
-              href="/workspace"
-              className="inline-flex items-center gap-1 rounded-full border bg-muted/40 px-2.5 py-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              <Table2 className="size-3" />
-              Workspace
-            </Link>
+          {/* Table Container */}
+          <div className="flex-1 min-h-0 overflow-y-auto vexa-scroll-hide mt-3">
+            {completedTasks.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center py-12 text-center text-xs text-muted-foreground">
+                <CheckCircle2 className="size-8 text-muted-foreground/30 mb-2" />
+                <p className="font-medium text-foreground">No completed tasks yet</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Complete tasks in the Eisenhower Matrix to log them here.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsTableView(false)}
+                  className="mt-3 h-7 rounded-full text-xs"
+                >
+                  Open Matrix
+                </Button>
+              </div>
+            ) : (
+              <table className="w-full text-left text-xs">
+                <thead className="sticky top-0 bg-background/95 backdrop-blur-md text-[10px] uppercase font-mono text-muted-foreground border-b border-border/50 z-10">
+                  <tr>
+                    <th className="py-2.5 px-3 font-semibold">Title</th>
+                    <th className="py-2.5 px-3 font-semibold">Category</th>
+                    <th className="py-2.5 px-3 font-semibold">Quadrant</th>
+                    <th className="py-2.5 px-3 font-semibold">Due Date</th>
+                    <th className="py-2.5 px-3 font-semibold">Completed Date</th>
+                    <th className="py-2.5 px-3 text-right font-semibold">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/25">
+                  {completedTasks.map((task) => {
+                    const cat = resolveCategory(task.kind);
+                    const due = task.dueAt
+                      ? new Date(task.dueAt).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : "—";
+                    const completedAt = task.updatedAt
+                      ? new Date(task.updatedAt).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                        })
+                      : "—";
+
+                    return (
+                      <tr
+                        key={task.id}
+                        className="hover:bg-muted/30 transition-colors group/row"
+                      >
+                        <td className="py-2.5 px-3 font-medium text-foreground max-w-[280px] truncate line-through opacity-75">
+                          {task.title}
+                        </td>
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border",
+                              cat.chipBorder,
+                              cat.chipBg,
+                              cat.chipText
+                            )}
+                          >
+                            <span className={cn("size-1 rounded-full", cat.dotColor)} />
+                            {cat.label}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-[11px] text-muted-foreground uppercase whitespace-nowrap">
+                          {task.quadrant?.toUpperCase() || "Q2"}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-[11px] text-muted-foreground whitespace-nowrap">
+                          {due}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-[11px] text-muted-foreground whitespace-nowrap">
+                          {completedAt}
+                        </td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => void toggleComplete(task)}
+                            className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline font-medium mr-3"
+                            title="Restore task to matrix"
+                          >
+                            <RotateCcw className="size-3" />
+                            <span>Restore</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void deleteTask(task.id)}
+                            className="text-[11px] text-muted-foreground hover:text-destructive"
+                            title="Permanently delete"
+                          >
+                            <Trash2 className="size-3" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 
-        <div className="mt-5 w-full max-w-2xl rounded-2xl border bg-card/60 px-3 py-3">
-          <ContributionGraph refreshKey={refreshKey} />
-        </div>
+      </div>
 
-        {/* iPhone-style stacked prompt list */}
-        <div className="mt-6 w-full max-w-xl">
-          <p className="mb-3 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Prompts
-          </p>
+      {/* ── Add Task Modal ── */}
+      {addModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in-0 duration-150">
           <div
-            data-prompt-scroll
-            className="vexa-scroll-hide max-h-[min(58vh,560px)] overflow-y-auto overflow-x-hidden px-1 pb-6"
+            className="w-full max-w-md rounded-2xl border border-border bg-background p-5 shadow-2xl ring-1 ring-white/10"
+            onClick={(e) => e.stopPropagation()}
           >
-            <PromptStack
-              items={history}
-              onSelect={(h) => {
-                setSheetEntry(h);
-                setSheetOpen(true);
-              }}
-            />
+            <div className="flex items-center justify-between border-b border-border/50 pb-2.5">
+              <h2 className="text-sm font-semibold tracking-tight">Add Task Chip</h2>
+              <button
+                type="button"
+                onClick={() => setAddModalOpen(false)}
+                className="size-6 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateTask} className="mt-3.5 space-y-3">
+              <div>
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Title
+                </label>
+                <Input
+                  required
+                  autoFocus
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="e.g. Raft assignment, RocksDB perf, Gym…"
+                  className="mt-1 h-8 rounded-xl text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Category (Neon Chip)
+                </label>
+                <div className="mt-1 grid grid-cols-3 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setNewCategory("personal")}
+                    className={cn(
+                      "flex items-center justify-center gap-1 rounded-xl border p-2 text-xs transition-all",
+                      newCategory === "personal"
+                        ? "border-pink-500 bg-pink-500/20 text-pink-300 font-bold shadow-[0_0_8px_rgba(236,72,153,0.3)]"
+                        : "border-border/60 bg-muted/40 text-muted-foreground"
+                    )}
+                  >
+                    <span className="size-1.5 rounded-full bg-pink-400" />
+                    <span>Personal</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewCategory("college")}
+                    className={cn(
+                      "flex items-center justify-center gap-1 rounded-xl border p-2 text-xs transition-all",
+                      newCategory === "college"
+                        ? "border-emerald-500 bg-emerald-500/20 text-emerald-300 font-bold shadow-[0_0_8px_rgba(16,185,129,0.3)]"
+                        : "border-border/60 bg-muted/40 text-muted-foreground"
+                    )}
+                  >
+                    <span className="size-1.5 rounded-full bg-emerald-400" />
+                    <span>College</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewCategory("interview")}
+                    className={cn(
+                      "flex items-center justify-center gap-1 rounded-xl border p-2 text-xs transition-all",
+                      newCategory === "interview"
+                        ? "border-cyan-500 bg-cyan-500/20 text-cyan-300 font-bold shadow-[0_0_8px_rgba(6,182,212,0.3)]"
+                        : "border-border/60 bg-muted/40 text-muted-foreground"
+                    )}
+                  >
+                    <span className="size-1.5 rounded-full bg-cyan-400" />
+                    <span>Prep / Projects</span>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Quadrant
+                </label>
+                <div className="mt-1 grid grid-cols-2 gap-1.5">
+                  {QUADRANTS.map((q) => (
+                    <button
+                      key={q.id}
+                      type="button"
+                      onClick={() => setTargetQuadrant(q.id)}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-xl border p-2 text-left text-xs transition-all",
+                        targetQuadrant === q.id
+                          ? "border-primary bg-primary/10 font-bold text-foreground"
+                          : "border-border/60 bg-muted/30 text-muted-foreground"
+                      )}
+                    >
+                      <span className="size-1.5 rounded-full bg-primary" />
+                      <span>{q.label.split(" · ")[0]} ({q.tag})</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Deadline
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setPresetDeadline(4)}
+                      className="rounded bg-muted px-1.5 py-0.2 text-[9px] text-muted-foreground hover:text-foreground"
+                    >
+                      +4h
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPresetDeadline(12)}
+                      className="rounded bg-muted px-1.5 py-0.2 text-[9px] text-muted-foreground hover:text-foreground"
+                    >
+                      Today
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPresetDeadline(24)}
+                      className="rounded bg-muted px-1.5 py-0.2 text-[9px] text-muted-foreground hover:text-foreground"
+                    >
+                      Tomorrow
+                    </button>
+                  </div>
+                </div>
+                <Input
+                  type="datetime-local"
+                  value={newDueAt}
+                  onChange={(e) => setNewDueAt(e.target.value)}
+                  className="mt-1 h-8 rounded-xl text-xs font-mono"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 border-t border-border/50 pt-3">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setAddModalOpen(false)}
+                  className="h-8 rounded-full text-xs"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={savingNew || !newTitle.trim()}
+                  className="h-8 rounded-full px-4 text-xs font-semibold"
+                >
+                  {savingNew ? "Saving…" : "Add Chip"}
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
-      </section>
-
-      <HistorySheet
-        entry={sheetEntry}
-        open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-      />
+      )}
     </div>
   );
 }

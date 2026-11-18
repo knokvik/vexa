@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
-import { listUserTasks, upsertUserTask, listActions } from "@/lib/crm/db";
-import { listApplications, listEvents } from "@/lib/crm/db";
+import {
+  listUserTasks,
+  upsertUserTask,
+  deleteUserTask,
+  listActions,
+  listApplications,
+  listEvents,
+} from "@/lib/crm/db";
 
 /** Active work rail: tasks + interviews + open apps
  *  ?all=1 includes completed tasks
@@ -46,6 +52,9 @@ export async function POST(request: Request) {
       dueAt: body.dueAt,
       notes: body.notes,
       done: body.done,
+      quadrant: body.quadrant,
+      urgent: body.urgent,
+      important: body.important,
       applicationId: body.applicationId,
     });
     return NextResponse.json({ ok: true, task });
@@ -68,12 +77,40 @@ export async function PATCH(request: Request) {
       id,
       title: body.title || "Task",
       kind: body.kind || "personal",
-      done: body.done ?? true,
+      done: body.done,
       companyName: body.companyName,
       notes: body.notes,
       dueAt: body.dueAt,
+      quadrant: body.quadrant,
+      urgent: body.urgent,
+      important: body.important,
     });
     return NextResponse.json({ ok: true, task });
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "failed" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    let id = searchParams.get("id");
+    if (!id) {
+      try {
+        const body = await request.json();
+        id = body.id;
+      } catch {
+        /* empty */
+      }
+    }
+    if (!id) {
+      return NextResponse.json({ error: "id required" }, { status: 400 });
+    }
+    const ok = await deleteUserTask(id);
+    return NextResponse.json({ ok, deleted: ok });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "failed" },
