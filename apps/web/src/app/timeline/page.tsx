@@ -287,10 +287,10 @@ export default function TimelinePage() {
           <table className="w-full text-left">
             <thead>
               <tr className="border-b text-[10px] font-medium text-muted-foreground">
-                <th className="w-8 px-2 py-1.5" />
-                <th className="px-2 py-1.5">Task</th>
-                <th className="px-2 py-1.5">Kind</th>
-                <th className="px-2 py-1.5 text-right">Due</th>
+                <th className="w-8 px-3 py-2" />
+                <th className="px-3 py-2">Task</th>
+                <th className="w-28 px-3 py-2">Kind</th>
+                <th className="w-28 px-3 py-2 text-right">Due</th>
               </tr>
             </thead>
             <tbody>
@@ -309,9 +309,9 @@ export default function TimelinePage() {
                 return (
                   <tr
                     key={t.id}
-                    className="border-t border-border/50 hover:bg-muted/40"
+                    className="border-t border-border/50 hover:bg-muted/40 transition-colors"
                   >
-                    <td className="px-2 py-2">
+                    <td className="px-3 py-2.5">
                       <button
                         type="button"
                         className="rounded p-0.5 hover:bg-muted"
@@ -321,19 +321,19 @@ export default function TimelinePage() {
                         <Circle className="size-4 text-muted-foreground" />
                       </button>
                     </td>
-                    <td className="px-2 py-2 text-sm font-medium">{t.title}</td>
-                    <td className="px-2 py-2">
+                    <td className="px-3 py-2.5 text-sm font-medium">{t.title}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
                       <Badge variant="outline" className="text-[9px] capitalize">
-                        {t.kind}
+                        {t.kind.replace("_", " ")}
                       </Badge>
                     </td>
                     <td
                       className={cn(
-                        "px-2 py-2 text-right font-mono text-[11px]",
+                        "px-3 py-2.5 text-right font-mono text-[11px] whitespace-nowrap",
                         d != null && d < 0
                           ? "text-destructive"
                           : d != null && d <= 2
-                            ? "text-amber-600"
+                            ? "text-amber-500 font-medium"
                             : "text-muted-foreground"
                       )}
                     >

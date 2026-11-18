@@ -422,7 +422,7 @@ function ChatPageInner() {
             onChange={(e) => !listening && setText(e.target.value)}
             onKeyDown={onKeyDown}
             rows={Math.min(5, Math.max(1, displayValue.split("\n").length))}
-            placeholder="Ask about tables, add tasks, find jobs…"
+            placeholder={listening ? "Listening to your voice… (speak naturally)" : "Ask about tables, add tasks, find jobs…"}
             className="min-h-[40px] flex-1 resize-none bg-transparent py-2 text-[15px] outline-none placeholder:text-muted-foreground/70"
             disabled={busy}
             readOnly={listening}

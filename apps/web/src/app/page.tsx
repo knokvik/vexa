@@ -25,6 +25,7 @@ import {
 import type { CrmUserTask, EisenhowerQuadrant, UserTaskKind } from "@vexa/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { VoiceTranscribeButton } from "@/components/VoiceTranscribeButton";
 import { cn } from "@/lib/utils";
 
 type TaskCategoryKey = "personal" | "college" | "interview" | "other";
@@ -473,23 +474,30 @@ export default function EisenhowerMatrixPage() {
 
         {/* Right Tools: Search + Add Task */}
         <div className="flex items-center gap-1.5 ml-auto">
-          <div className="relative w-36 sm:w-48">
+          <div className="relative w-36 sm:w-56">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search tasks…"
-              className="h-7 rounded-full pl-7 pr-6 text-xs"
+              className="h-7 rounded-full pl-7 pr-12 text-xs"
             />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                <X className="size-2.5" />
-              </button>
-            )}
+            <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="p-1 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="size-2.5" />
+                </button>
+              )}
+              <VoiceTranscribeButton
+                size="sm"
+                currentValue={search}
+                onTranscript={(text) => setSearch(text)}
+              />
+            </div>
           </div>
 
           <Button
@@ -609,93 +617,115 @@ export default function EisenhowerMatrixPage() {
                         return (
                           <div
                             key={task.id}
-                            draggable
-                            onDragStart={(e) => handleDragStart(e, task.id)}
                             style={{
                               marginLeft: offsets.marginLeft,
                               marginTop: offsets.marginTop,
                             }}
-                            className={cn(
-                              "group/chip relative inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs cursor-grab active:cursor-grabbing",
-                              "transition-all duration-300 ease-out hover:z-20 hover:scale-[1.02]",
-                              "max-w-[190px] hover:max-w-[420px]",
-                              cat.chipBorder,
-                              cat.chipBg
-                            )}
+                            className="relative group/wrapper inline-block"
                           >
-                            {/* Complete Checkbox */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void toggleComplete(task);
-                              }}
-                              className="size-3 shrink-0 rounded-full border border-current opacity-70 hover:opacity-100 flex items-center justify-center transition-all"
-                              title="Mark completed"
-                            >
-                              <span className="size-1 rounded-full bg-current opacity-40 group-hover/chip:opacity-100" />
-                            </button>
-
-                            {/* Category Dot */}
-                            <span className={cn("size-1.5 shrink-0 rounded-full", cat.dotColor)} />
-
-                            {/* Task Title: Compact by default, smoothly expands on hover */}
-                            <span
+                            <div
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, task.id)}
                               className={cn(
-                                "truncate font-medium text-[11px] tracking-tight transition-[max-width,color] duration-300 ease-out",
-                                "max-w-[85px] group-hover/chip:max-w-[280px]",
-                                cat.chipText
+                                "group/chip relative inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs cursor-grab active:cursor-grabbing",
+                                "transition-all duration-300 ease-out select-none",
+                                "group-hover/wrapper:absolute group-hover/wrapper:left-0 group-hover/wrapper:top-0 group-hover/wrapper:z-30 group-hover/wrapper:w-max group-hover/wrapper:max-w-[420px] group-hover/wrapper:shadow-xl group-hover/wrapper:backdrop-blur-md",
+                                "max-w-[280px]",
+                                cat.chipBorder,
+                                cat.chipBg
                               )}
-                              title={task.title}
                             >
-                              {task.title}
-                            </span>
-
-                            {/* Deadline Tag */}
-                            {deadline.text && (
-                              <span
-                                className={cn(
-                                  "shrink-0 rounded-full px-1.5 py-0.2 text-[9px] font-mono",
-                                  deadline.overdue
-                                    ? "bg-rose-500/20 text-rose-300 font-bold border border-rose-500/40"
-                                    : "bg-black/25 dark:bg-white/10 text-muted-foreground"
-                                )}
-                              >
-                                {deadline.text}
-                              </span>
-                            )}
-
-                            {/* Quick Actions on Hover */}
-                            <div className="opacity-0 group-hover/chip:opacity-100 transition-opacity flex items-center gap-0.5 ml-0.5 shrink-0">
-                              {(["q1", "q2", "q3", "q4"] as const).map((targetQ) => {
-                                if (targetQ === quad.id) return null;
-                                return (
-                                  <button
-                                    key={targetQ}
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      void moveQuadrant(task.id, targetQ);
-                                    }}
-                                    className="size-4 rounded text-[8px] font-mono uppercase bg-black/30 hover:bg-black/60 dark:bg-white/10 dark:hover:bg-white/20 text-muted-foreground hover:text-foreground flex items-center justify-center"
-                                    title={`Move to ${targetQ.toUpperCase()}`}
-                                  >
-                                    {targetQ.toUpperCase()}
-                                  </button>
-                                );
-                              })}
-
+                              {/* Complete Checkbox */}
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  void deleteTask(task.id);
+                                  void toggleComplete(task);
                                 }}
-                                className="size-4 rounded text-[8px] hover:bg-destructive/20 text-muted-foreground hover:text-destructive flex items-center justify-center"
-                                title="Delete task"
+                                className="size-3 shrink-0 rounded-full border border-current opacity-70 hover:opacity-100 flex items-center justify-center transition-all"
+                                title="Mark completed"
                               >
-                                <Trash2 className="size-2.5" />
+                                <span className="size-1 rounded-full bg-current opacity-40 group-hover/chip:opacity-100" />
                               </button>
+
+                              {/* Category Dot */}
+                              <span className={cn("size-1.5 shrink-0 rounded-full", cat.dotColor)} />
+
+                              {/* Task Title: Visible in normal state up to available space, expands further on hover */}
+                              <span
+                                className={cn(
+                                  "truncate font-medium text-[11px] tracking-tight transition-[max-width,color] duration-300 ease-out",
+                                  "max-w-[160px] group-hover/wrapper:max-w-[300px]",
+                                  cat.chipText
+                                )}
+                                title={task.title}
+                              >
+                                {task.title}
+                              </span>
+
+                              {/* Deadline Tag */}
+                              {deadline.text && (
+                                <span
+                                  className={cn(
+                                    "shrink-0 rounded-full px-1.5 py-0.2 text-[9px] font-mono",
+                                    deadline.overdue
+                                      ? "bg-rose-500/20 text-rose-300 font-bold border border-rose-500/40"
+                                      : "bg-black/25 dark:bg-white/10 text-muted-foreground"
+                                  )}
+                                >
+                                  {deadline.text}
+                                </span>
+                              )}
+
+                              {/* Quick Actions on Hover */}
+                              <div className="opacity-0 group-hover/wrapper:opacity-100 transition-opacity flex items-center gap-0.5 ml-0.5 shrink-0">
+                                {(["q1", "q2", "q3", "q4"] as const).map((targetQ) => {
+                                  if (targetQ === quad.id) return null;
+                                  return (
+                                    <button
+                                      key={targetQ}
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void moveQuadrant(task.id, targetQ);
+                                      }}
+                                      className="size-4 rounded text-[8px] font-mono uppercase bg-black/30 hover:bg-black/60 dark:bg-white/10 dark:hover:bg-white/20 text-muted-foreground hover:text-foreground flex items-center justify-center"
+                                      title={`Move to ${targetQ.toUpperCase()}`}
+                                    >
+                                      {targetQ.toUpperCase()}
+                                    </button>
+                                  );
+                                })}
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void deleteTask(task.id);
+                                  }}
+                                  className="size-4 rounded text-[8px] hover:bg-destructive/20 text-muted-foreground hover:text-destructive flex items-center justify-center"
+                                  title="Delete task"
+                                >
+                                  <Trash2 className="size-2.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Invisible placeholder footprint to preserve exact slot dimensions */}
+                            <div
+                              aria-hidden="true"
+                              className="invisible pointer-events-none inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs max-w-[280px]"
+                            >
+                              <span className="size-3 shrink-0" />
+                              <span className="size-1.5 shrink-0" />
+                              <span className="truncate font-medium text-[11px] max-w-[160px]">
+                                {task.title}
+                              </span>
+                              {deadline.text && (
+                                <span className="shrink-0 text-[9px] font-mono px-1.5">
+                                  {deadline.text}
+                                </span>
+                              )}
                             </div>
                           </div>
                         );
@@ -862,9 +892,16 @@ export default function EisenhowerMatrixPage() {
 
             <form onSubmit={handleCreateTask} className="mt-3.5 space-y-3">
               <div>
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Title
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Title
+                  </label>
+                  <VoiceTranscribeButton
+                    size="sm"
+                    currentValue={newTitle}
+                    onTranscript={(text) => setNewTitle(text)}
+                  />
+                </div>
                 <Input
                   required
                   autoFocus
