@@ -482,6 +482,32 @@ function defaultSeedTasks(): CrmUserTask[] {
 
   return [
     {
+      id: "task_personal_unicorn_rc",
+      title: "Unicorn Bike RC (Registration Certificate)",
+      kind: "personal",
+      quadrant: "q1",
+      urgent: true,
+      important: true,
+      dueAt: formatIsoHours(24),
+      notes: "Honda Unicorn bike RC transfer / renewal, check Parivahan Sewa portal and RTO status.",
+      done: false,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    },
+    {
+      id: "task_personal_icici_fd",
+      title: "ICICI Bank FD (Fixed Deposit)",
+      kind: "personal",
+      quadrant: "q2",
+      urgent: false,
+      important: true,
+      dueAt: formatIsoHours(48),
+      notes: "Review ICICI Bank fixed deposit interest rates, tenure options, and manage FD renewal/investment.",
+      done: false,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    },
+    {
       id: "task_hack_1",
       title: "BVDCU HackNova Hackathon PPT & Demo Deck",
       kind: "project_prep",
