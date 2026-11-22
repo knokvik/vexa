@@ -117,7 +117,7 @@ export default function JobsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6 pt-3 sm:pt-5">
       <div className="flex items-center justify-end">
         <Button
           variant="outline"

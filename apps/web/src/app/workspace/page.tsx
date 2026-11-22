@@ -142,7 +142,7 @@ export default function WorkspacePage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6 pt-3 sm:pt-5">
       <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
         {/* Left — detailed job tables */}
         <div className="min-w-0 space-y-3">

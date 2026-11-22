@@ -62,14 +62,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen overflow-x-hidden bg-background">
       {/* Fixed top bar — does not scroll away */}
       <header className="fixed inset-x-0 top-0 z-50 border-b border-border/40 bg-background/95 pt-2 backdrop-blur-xl supports-[backdrop-filter]:bg-background/85 sm:pt-3">
-        <div
-          className={cn(
-            "relative flex h-12 items-center justify-between gap-2 pb-2 sm:h-14 sm:gap-3",
-            pathname === "/"
-              ? "w-full max-w-[1720px] mx-auto px-2 sm:px-4 lg:px-6"
-              : "vexa-shell"
-          )}
-        >
+        <div className="vexa-shell relative flex h-12 items-center justify-between gap-2 pb-2 sm:h-14 sm:gap-3">
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <Link
               href="/"
@@ -109,8 +102,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         className={cn(
           "relative z-0 overflow-x-hidden pt-[4.25rem] sm:pt-[4.75rem]",
           pathname === "/"
-            ? "w-full max-w-[1720px] mx-auto px-2 sm:px-4 lg:px-6 h-[calc(100dvh-4.25rem)] sm:h-[calc(100dvh-4.75rem)] pb-2 overflow-hidden flex flex-col"
-            : "vexa-shell pb-28 sm:pb-12 md:pb-12"
+            ? "vexa-shell h-[calc(100dvh-4.25rem)] sm:h-[calc(100dvh-4.75rem)] pb-2 overflow-hidden flex flex-col"
+            : "vexa-shell pt-4 sm:pt-6 pb-28 sm:pb-16 md:pb-16"
         )}
       >
         <PageTransition>{children}</PageTransition>

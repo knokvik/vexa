@@ -13,6 +13,7 @@ export type AiProvider =
   | "gemini"
   | "mistral"
   | "kimi"
+  | "grok"
   | "copilot"
   | "cursor"
   | "unknown";
@@ -41,6 +42,7 @@ export function detectAiProvider(headers: Headers): AiProvider {
   // Explicit header override
   if (via.includes("chatgpt") || via.includes("openai") || via.includes("gpt")) return "chatgpt";
   if (via.includes("claude") || via.includes("anthropic")) return "claude";
+  if (via.includes("grok") || via.includes("xai")) return "grok";
   if (via.includes("gemini") || via.includes("google")) return "gemini";
   if (via.includes("mistral")) return "mistral";
   if (via.includes("kimi") || via.includes("moonshot")) return "kimi";
@@ -50,6 +52,7 @@ export function detectAiProvider(headers: Headers): AiProvider {
   // User-Agent sniffing
   if (ua.includes("chatgpt") || ua.includes("openai") || ua.includes("gptbot")) return "chatgpt";
   if (ua.includes("claude") || ua.includes("anthropic")) return "claude";
+  if (ua.includes("grok") || ua.includes("xai")) return "grok";
   if (ua.includes("gemini") || ua.includes("google")) return "gemini";
   if (ua.includes("mistral")) return "mistral";
   if (ua.includes("kimi") || ua.includes("moonshot")) return "kimi";
