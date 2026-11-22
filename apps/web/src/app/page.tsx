@@ -214,6 +214,10 @@ export default function EisenhowerMatrixPage() {
 
   useEffect(() => {
     void loadTasks(false);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadTasks(true);
+    }, 5000);
+    return () => window.clearInterval(timer);
   }, [loadTasks]);
 
   const toggleComplete = async (task: CrmUserTask) => {

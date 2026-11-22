@@ -16,8 +16,13 @@ import {
   deleteCrmJob,
   loadCrm,
   newId,
+  listEvents,
+  upsertEvent,
+  deleteEvent,
+  reorderTableRows,
+  applyTableOrder,
 } from "@/lib/crm/db";
-import type { CrmUserTask, EisenhowerQuadrant, UserTaskKind } from "@vexa/shared";
+import type { CrmEvent, CrmUserTask, EisenhowerQuadrant, UserTaskKind } from "@vexa/shared";
 
 export type TaskCategory = "personal" | "college" | "interview" | "other";
 
@@ -234,8 +239,73 @@ export async function executeListTables() {
         description: "Discovered job listings and opportunities",
         sample: db.jobs.slice(0, 5),
       },
+      events: {
+        count: db.events.length,
+        description: "Timeline events, meetings, interviews, calls, and follow-up dates",
+        sample: db.events.slice(0, 5),
+      },
     },
   };
+}
+
+export async function executeGetWorkspace() {
+  const db = await loadCrm();
+  const tasks = await listUserTasks(true);
+  return {
+    ok: true,
+    updatedAt: db.updatedAt,
+    tables: {
+      tasks: tasks.length,
+      applications: db.applications.length,
+      jobs: db.jobs.length,
+      companies: db.companies.length,
+      contacts: db.contacts.length,
+      events: db.events.length,
+    },
+    tableOrder: db.tableOrder || {},
+    capabilities: ["read", "insert", "update", "delete", "reorder", "timeline_events"],
+  };
+}
+
+export async function executeListEvents(params: { search?: string; from?: string; to?: string; limit?: number }) {
+  const query = params.search?.trim().toLowerCase();
+  const from = params.from ? new Date(params.from).getTime() : -Infinity;
+  const to = params.to ? new Date(params.to).getTime() : Infinity;
+  let events = await listEvents();
+  events = events.filter((event) => {
+    const at = event.datetime ? new Date(event.datetime).getTime() : new Date(event.createdAt).getTime();
+    return (!query || `${event.title} ${event.type} ${event.prepNotes || ""}`.toLowerCase().includes(query)) && at >= from && at <= to;
+  });
+  const limit = Math.min(Math.max(Number(params.limit) || 50, 1), 200);
+  return { ok: true, count: events.length, events: events.slice(0, limit) };
+}
+
+export async function executeAddEvent(params: Partial<CrmEvent> & { title: string; type: CrmEvent["type"] }) {
+  if (!params.title?.trim()) throw new Error("Event title is required");
+  const event = await upsertEvent({ ...params, title: params.title.trim() });
+  return { ok: true, message: `Timeline event "${event.title}" added`, event };
+}
+
+export async function executeUpdateEvent(params: Partial<CrmEvent> & { id: string }) {
+  if (!params.id) throw new Error("Event id is required");
+  const existing = (await listEvents()).find((event) => event.id === params.id);
+  if (!existing) throw new Error(`Event with id "${params.id}" not found`);
+  const event = await upsertEvent({ ...existing, ...params, id: params.id });
+  return { ok: true, message: `Timeline event "${event.title}" updated`, event };
+}
+
+export async function executeDeleteEvent(params: { id: string }) {
+  if (!(await deleteEvent(params.id))) throw new Error(`Event with id "${params.id}" not found`);
+  return { ok: true, message: `Timeline event "${params.id}" deleted` };
+}
+
+export async function executeReorderTable(params: { table: string; orderedIds: string[] }) {
+  if (!params.table || !Array.isArray(params.orderedIds)) throw new Error("table and orderedIds are required");
+  const result = await executeGetTableRows({ table: params.table, limit: 10000 });
+  const known = new Set((result.rows as Array<{ id: string }>).map((row) => row.id));
+  const unknown = params.orderedIds.filter((id) => !known.has(id));
+  if (unknown.length) throw new Error(`Unknown row id(s): ${unknown.join(", ")}`);
+  return { ok: true, ...(await reorderTableRows(params.table, params.orderedIds)) };
 }
 
 export async function executeGetTableRows(params: {
@@ -250,6 +320,7 @@ export async function executeGetTableRows(params: {
   if (tableName === "tasks") {
     let rows = await listUserTasks(true);
     if (s) rows = rows.filter((r) => r.title.toLowerCase().includes(s));
+    rows = applyTableOrder("tasks", rows);
     return { ok: true, table: "tasks", count: rows.length, rows: rows.slice(0, limit) };
   }
 
@@ -263,6 +334,7 @@ export async function executeGetTableRows(params: {
           r.stage.includes(s)
       );
     }
+    rows = applyTableOrder("applications", rows);
     return { ok: true, table: "applications", count: rows.length, rows: rows.slice(0, limit) };
   }
 
@@ -275,6 +347,7 @@ export async function executeGetTableRows(params: {
           (r.domain && r.domain.toLowerCase().includes(s))
       );
     }
+    rows = applyTableOrder("companies", rows);
     return { ok: true, table: "companies", count: rows.length, rows: rows.slice(0, limit) };
   }
 
@@ -288,6 +361,7 @@ export async function executeGetTableRows(params: {
           (r.companyName && r.companyName.toLowerCase().includes(s))
       );
     }
+    rows = applyTableOrder("contacts", rows);
     return { ok: true, table: "contacts", count: rows.length, rows: rows.slice(0, limit) };
   }
 
@@ -300,10 +374,18 @@ export async function executeGetTableRows(params: {
           r.companyName.toLowerCase().includes(s)
       );
     }
+    rows = applyTableOrder("jobs", rows);
     return { ok: true, table: "jobs", count: rows.length, rows: rows.slice(0, limit) };
   }
 
-  throw new Error(`Unknown table "${params.table}". Available: applications, jobs, companies, contacts, tasks`);
+  if (tableName === "events" || tableName === "timeline") {
+    let rows = await listEvents();
+    if (s) rows = rows.filter((r) => `${r.title} ${r.type} ${r.prepNotes || ""}`.toLowerCase().includes(s));
+    rows = applyTableOrder("events", rows);
+    return { ok: true, table: "events", count: rows.length, rows: rows.slice(0, limit) };
+  }
+
+  throw new Error(`Unknown table "${params.table}". Available: applications, jobs, companies, contacts, tasks, events`);
 }
 
 export async function executeAddTableRow(params: {
@@ -322,6 +404,20 @@ export async function executeAddTableRow(params: {
       notes: d.notes,
       urgent: d.urgent,
       important: d.important,
+    });
+  }
+
+  if (tableName === "events" || tableName === "timeline") {
+    return executeAddEvent({
+      type: d.type || "other",
+      title: d.title || d.name,
+      datetime: d.datetime || d.at,
+      endDatetime: d.endDatetime,
+      applicationId: d.applicationId,
+      companyId: d.companyId,
+      contactIds: Array.isArray(d.contactIds) ? d.contactIds : [],
+      prepNotes: d.prepNotes || d.notes,
+      done: d.done,
     });
   }
 
@@ -407,6 +503,10 @@ export async function executeUpdateTableRow(params: {
     });
   }
 
+  if (tableName === "events" || tableName === "timeline") {
+    return executeUpdateEvent({ id: params.id, ...d });
+  }
+
   if (tableName === "applications") {
     const apps = await listApplications();
     const existing = apps.find((a) => a.id === params.id);
@@ -483,6 +583,10 @@ export async function executeDeleteTableRow(params: {
     return executeDeleteTask({ id: params.id });
   }
 
+  if (tableName === "events" || tableName === "timeline") {
+    return executeDeleteEvent({ id: params.id });
+  }
+
   if (tableName === "applications") {
     const deleted = await deleteApplication(params.id);
     if (!deleted) throw new Error(`Application with id "${params.id}" not found`);
@@ -507,5 +611,5 @@ export async function executeDeleteTableRow(params: {
     return { ok: true, message: `Job ${params.id} deleted` };
   }
 
-  throw new Error(`Unknown table "${params.table}". Available: applications, jobs, companies, contacts, tasks`);
+  throw new Error(`Unknown table "${params.table}". Available: applications, jobs, companies, contacts, tasks, events`);
 }

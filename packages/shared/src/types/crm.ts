@@ -280,4 +280,6 @@ export interface CrmSnapshot {
   actions: CrmAction[];
   userTasks?: CrmUserTask[];
   graphLayout?: GraphNodeLayout;
+  /** Explicit display order for workspace tables. Unlisted rows keep their existing order. */
+  tableOrder?: Record<string, string[]>;
 }

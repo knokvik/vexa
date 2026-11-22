@@ -17,6 +17,7 @@ type AppRow = {
   source: string;
   status: string;
   last_touch: string;
+  updated_at?: string;
 };
 
 type JobRow = {
@@ -25,9 +26,21 @@ type JobRow = {
   company: string;
   location: string;
   salary: string;
+  updated_at?: string;
 };
 
 type SideItem = { id: string; title: string; due?: string; done?: boolean };
+
+function formatRelative(iso?: string) {
+  if (!iso) return "—";
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (!Number.isFinite(seconds)) return "—";
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
 
 /**
  * Notion-style workspace tables — jobs detailed left, small life tables right.
@@ -36,7 +49,7 @@ export default function WorkspacePage() {
   const [apps, setApps] = useState<AppRow[]>([]);
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [companies, setCompanies] = useState<
-    Array<{ name: string; domain: string; applied: string; apps: number }>
+    Array<{ id: string; name: string; domain: string; applied: string; apps: number; updated_at?: string }>
   >([]);
   const [conferences, setConferences] = useState<SideItem[]>([]);
   const [scholarships, setScholarships] = useState<SideItem[]>([]);
@@ -51,9 +64,10 @@ export default function WorkspacePage() {
     "conference" | "scholarship" | "hackathon"
   >("conference");
   const [busy, setBusy] = useState(false);
+  const [draggedRow, setDraggedRow] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await fetch("/api/crm/tables");
       const data = await res.json();
@@ -70,7 +84,35 @@ export default function WorkspacePage() {
 
   useEffect(() => {
     void load();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load(true);
+    }, 5000);
+    return () => window.clearInterval(timer);
   }, [load]);
+
+  async function reorder(table: "applications" | "jobs" | "companies", targetId: string) {
+    if (!draggedRow || draggedRow === targetId) return;
+    const source = table === "applications" ? apps : table === "jobs" ? jobs : companies;
+    const from = source.findIndex((row) => row.id === draggedRow);
+    const to = source.findIndex((row) => row.id === targetId);
+    if (from < 0 || to < 0) return;
+    const next = [...source];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    if (table === "applications") setApps(next as AppRow[]);
+    if (table === "jobs") setJobs(next as JobRow[]);
+    if (table === "companies") setCompanies(next as typeof companies);
+    setDraggedRow(null);
+    try {
+      await fetch("/api/crm/tables", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ table, orderedIds: next.map((row) => row.id) }),
+      });
+    } catch {
+      await load();
+    }
+  }
 
   const q = filter.trim().toLowerCase();
   const filteredApps = useMemo(
@@ -197,7 +239,11 @@ export default function WorkspacePage() {
                 {filteredApps.map((a) => (
                   <tr
                     key={a.id}
-                    className="border-t border-border/50 hover:bg-muted/40"
+                    draggable
+                    onDragStart={() => setDraggedRow(a.id)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => void reorder("applications", a.id)}
+                    className="cursor-grab border-t border-border/50 hover:bg-muted/40 active:cursor-grabbing"
                   >
                     <td className="px-3 py-2.5 text-sm font-medium">
                       {a.company}
@@ -217,7 +263,7 @@ export default function WorkspacePage() {
                       {a.source}
                     </td>
                     <td className="px-3 py-2.5 font-mono text-[11px] text-muted-foreground">
-                      {a.last_touch}
+                      {formatRelative(a.updated_at || a.last_touch)}
                     </td>
                     <td className="px-2 py-2.5">
                       <select
@@ -254,7 +300,11 @@ export default function WorkspacePage() {
                 {filteredJobs.map((j) => (
                   <tr
                     key={j.id}
-                    className="border-t border-border/50 hover:bg-muted/40"
+                    draggable
+                    onDragStart={() => setDraggedRow(j.id)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => void reorder("jobs", j.id)}
+                    className="cursor-grab border-t border-border/50 hover:bg-muted/40 active:cursor-grabbing"
                   >
                     <td className="px-3 py-2.5 text-sm font-medium">
                       {j.title}
@@ -288,8 +338,12 @@ export default function WorkspacePage() {
                   )
                   .map((c, i) => (
                     <tr
-                      key={i}
-                      className="border-t border-border/50 hover:bg-muted/40"
+                      key={c.id}
+                      draggable
+                      onDragStart={() => setDraggedRow(c.id)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => void reorder("companies", c.id)}
+                      className="cursor-grab border-t border-border/50 hover:bg-muted/40 active:cursor-grabbing"
                     >
                       <td className="px-3 py-2.5 text-sm font-medium">
                         {c.name}

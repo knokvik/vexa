@@ -36,6 +36,7 @@ function empty(): CrmSnapshot {
     actions: [],
     userTasks: [],
     graphLayout: {},
+    tableOrder: {},
   };
 }
 
@@ -421,6 +422,16 @@ export async function upsertEvent(
 
 export async function listEvents() {
   return (await loadCrm()).events;
+}
+
+export async function deleteEvent(id: string): Promise<boolean> {
+  let ok = false;
+  await saveCrm((db) => {
+    const before = db.events.length;
+    db.events = db.events.filter((event) => event.id !== id);
+    ok = db.events.length < before;
+  });
+  return ok;
 }
 
 // ── Relationships ─────────────────────────────────────
@@ -959,4 +970,43 @@ export async function saveGraphLayout(layout: GraphNodeLayout) {
 
 export async function getGraphLayout(): Promise<GraphNodeLayout> {
   return (await loadCrm()).graphLayout || {};
+}
+
+/** Persist the visible order of a workspace table without changing row data. */
+export async function reorderTableRows(table: string, orderedIds: string[]) {
+  const normalizedTable = table.trim().toLowerCase();
+  const ids = orderedIds.map(String);
+  if (new Set(ids).size !== ids.length) {
+    throw new Error("orderedIds must not contain duplicates");
+  }
+
+  await saveCrm((db) => {
+    if (!db.tableOrder) db.tableOrder = {};
+    db.tableOrder[normalizedTable] = ids;
+  });
+  return { table: normalizedTable, orderedIds: ids };
+}
+
+export function applyTableOrder<T extends { id: string }>(
+  table: string,
+  rows: T[],
+  order = (cache?.tableOrder || {})[table]
+) {
+  const timestamp = (row: T) => {
+    const value = (row as T & { updatedAt?: string; createdAt?: string }).updatedAt ||
+      (row as T & { createdAt?: string }).createdAt;
+    const time = value ? new Date(value).getTime() : 0;
+    return Number.isNaN(time) ? 0 : time;
+  };
+  // Any new row not yet represented by a manual order should use the normal
+  // newest-first view. The next drag persists a complete order again.
+  if (!order?.length || order.length < rows.length) {
+    return [...rows].sort((a, b) => timestamp(b) - timestamp(a));
+  }
+  const rank = new Map(order.map((id, index) => [id, index]));
+  return [...rows].sort((a, b) => {
+    const ar = rank.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+    const br = rank.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+    return ar - br || timestamp(b) - timestamp(a);
+  });
 }

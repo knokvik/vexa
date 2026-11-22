@@ -19,8 +19,12 @@ export async function GET(request: Request) {
     listApplications(),
     listEvents(),
   ]);
+  const sortedTasks = [...tasks].sort(
+    (a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
+  );
   const activeApps = apps
     .filter((a) => a.status === "active")
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime())
     .slice(0, 12);
   const upcoming = events
     .filter((e) => !e.done)
@@ -29,7 +33,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     ok: true,
-    tasks,
+    tasks: sortedTasks,
     actions: actions.slice(0, 10),
     applications: activeApps,
     events: upcoming,

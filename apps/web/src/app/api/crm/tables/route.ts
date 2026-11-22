@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { loadCrm, listUserTasks } from "@/lib/crm/db";
+import { applyTableOrder, loadCrm, listUserTasks } from "@/lib/crm/db";
 import {
   executeAddTableRow,
   executeUpdateTableRow,
   executeDeleteTableRow,
+  executeReorderTable,
 } from "@/lib/ai-tools";
 
 /**
@@ -12,7 +13,9 @@ import {
  */
 export async function GET() {
   const db = await loadCrm();
-  const tasks = await listUserTasks(true);
+  const tasks = (await listUserTasks(true)).sort(
+    (a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
+  );
 
   const emails = db.emails.slice(0, 40).map((e) => ({
     id: e.id,
@@ -25,7 +28,7 @@ export async function GET() {
     at: e.receivedAt.slice(0, 10),
   }));
 
-  const companies = db.companies.slice(0, 40).map((c) => {
+  const companies = applyTableOrder("companies", db.companies).slice(0, 40).map((c) => {
     const apps = db.applications.filter((a) => a.companyId === c.id);
     const applied = apps.some((a) =>
       ["applied", "screen", "technical", "onsite", "offer", "accepted"].includes(
@@ -39,25 +42,28 @@ export async function GET() {
       applied: applied ? "yes" : "no",
       apps: apps.length,
       contacts: db.contacts.filter((x) => x.companyId === c.id).length,
+      updated_at: c.updatedAt,
     };
   });
 
-  const applications = db.applications.slice(0, 40).map((a) => ({
+  const applications = applyTableOrder("applications", db.applications).slice(0, 40).map((a) => ({
     id: a.id,
     company: a.companyName,
     role: a.jobTitle,
     stage: a.stage,
     source: a.source,
     status: a.status,
-    last_touch: a.lastTouchAt.slice(0, 10),
+    last_touch: a.lastTouchAt,
+    updated_at: a.updatedAt,
   }));
 
-  const jobs = db.jobs.slice(0, 40).map((j) => ({
+  const jobs = applyTableOrder("jobs", db.jobs).slice(0, 40).map((j) => ({
     id: j.id,
     title: j.title,
     company: j.companyName,
     location: j.location || "—",
     salary: j.salaryRange || "—",
+    updated_at: j.updatedAt,
   }));
 
   const contacts = db.contacts.slice(0, 40).map((c) => ({
@@ -188,6 +194,10 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+    if (body.table && Array.isArray(body.orderedIds)) {
+      const result = await executeReorderTable({ table: body.table, orderedIds: body.orderedIds });
+      return NextResponse.json(result);
+    }
     const table = body.table;
     if (!table) return NextResponse.json({ error: "table parameter required" }, { status: 400 });
     const result = await executeAddTableRow({ table, data: body.data || body });
@@ -200,6 +210,10 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json();
+    if (body.table && Array.isArray(body.orderedIds)) {
+      const result = await executeReorderTable({ table: body.table, orderedIds: body.orderedIds });
+      return NextResponse.json(result);
+    }
     const table = body.table;
     const id = body.id;
     if (!table || !id) return NextResponse.json({ error: "table and id required" }, { status: 400 });

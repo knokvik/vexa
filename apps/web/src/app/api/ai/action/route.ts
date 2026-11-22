@@ -9,6 +9,12 @@ import {
   executeAddTableRow,
   executeUpdateTableRow,
   executeDeleteTableRow,
+  executeGetWorkspace,
+  executeListEvents,
+  executeAddEvent,
+  executeUpdateEvent,
+  executeDeleteEvent,
+  executeReorderTable,
 } from "@/lib/ai-tools";
 import { detectAiProvider, recordAiActivity } from "@/lib/ai-activity";
 
@@ -73,7 +79,7 @@ export async function POST(request: Request) {
     if (!action) {
       return NextResponse.json(
         {
-          error: "Action parameter is required. Available: add_task, update_task, delete_task, list_tasks, list_tables, get_table_rows, add_table_row, update_table_row, delete_table_row",
+          error: "Action parameter is required. Available: add_task, update_task, delete_task, list_tasks, list_tables, get_table_rows, add_table_row, update_table_row, delete_table_row, get_workspace, list_timeline_events, add_timeline_event, update_timeline_event, delete_timeline_event, reorder_table",
         },
         { status: 400, headers: CORS_HEADERS }
       );
@@ -160,6 +166,31 @@ export async function POST(request: Request) {
           table: body.table,
           id: body.id,
         });
+        break;
+
+      case "get_workspace":
+      case "vexa_get_workspace":
+        result = await executeGetWorkspace();
+        break;
+      case "list_timeline_events":
+      case "vexa_list_timeline_events":
+        result = await executeListEvents(body);
+        break;
+      case "add_timeline_event":
+      case "vexa_add_timeline_event":
+        result = await executeAddEvent(body);
+        break;
+      case "update_timeline_event":
+      case "vexa_update_timeline_event":
+        result = await executeUpdateEvent(body);
+        break;
+      case "delete_timeline_event":
+      case "vexa_delete_timeline_event":
+        result = await executeDeleteEvent({ id: body.id });
+        break;
+      case "reorder_table":
+      case "vexa_reorder_table":
+        result = await executeReorderTable({ table: body.table, orderedIds: body.orderedIds });
         break;
 
       default:

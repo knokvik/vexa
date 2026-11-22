@@ -9,6 +9,12 @@ import {
   executeAddTableRow,
   executeUpdateTableRow,
   executeDeleteTableRow,
+  executeGetWorkspace,
+  executeListEvents,
+  executeAddEvent,
+  executeUpdateEvent,
+  executeDeleteEvent,
+  executeReorderTable,
 } from "@/lib/ai-tools";
 import { detectAiProvider, recordAiActivity } from "@/lib/ai-activity";
 
@@ -137,7 +143,7 @@ const MCP_TOOLS = [
   },
   {
     name: "vexa_list_tables",
-    description: "List all database tables in Vexa (applications, jobs, companies, contacts, tasks) with record counts and descriptions.",
+    description: "List all database tables in Vexa (applications, jobs, companies, contacts, tasks, events) with record counts and descriptions.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -151,7 +157,7 @@ const MCP_TOOLS = [
       properties: {
         table: {
           type: "string",
-          enum: ["applications", "jobs", "companies", "contacts", "tasks"],
+        enum: ["applications", "jobs", "companies", "contacts", "tasks", "events"],
           description: "Name of the table to query",
         },
         limit: {
@@ -174,7 +180,7 @@ const MCP_TOOLS = [
       properties: {
         table: {
           type: "string",
-          enum: ["applications", "jobs", "companies", "contacts", "tasks"],
+        enum: ["applications", "jobs", "companies", "contacts", "tasks", "events"],
           description: "Target table name",
         },
         data: {
@@ -193,7 +199,7 @@ const MCP_TOOLS = [
       properties: {
         table: {
           type: "string",
-          enum: ["applications", "jobs", "companies", "contacts", "tasks"],
+        enum: ["applications", "jobs", "companies", "contacts", "tasks", "events"],
           description: "Target table name",
         },
         id: {
@@ -227,6 +233,58 @@ const MCP_TOOLS = [
       required: ["table", "id"],
     },
   },
+  {
+    name: "vexa_get_workspace",
+    description: "Get the Vexa personal CRM workspace summary, table counts, persisted row ordering, and available capabilities. Call this first when you need to understand the workspace.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "vexa_list_timeline_events",
+    description: "List timeline events such as meetings, interviews, calls, deadlines, and follow-ups. Supports search and date bounds.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        search: { type: "string" },
+        from: { type: "string", description: "ISO date/time lower bound" },
+        to: { type: "string", description: "ISO date/time upper bound" },
+        limit: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "vexa_add_timeline_event",
+    description: "Add a meeting, interview, call, deadline, follow-up, or other event to the Vexa timeline.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        type: { type: "string", enum: ["screen", "technical", "onsite", "call", "meeting", "offer_deadline", "follow_up_task", "coding_challenge", "other"] },
+        title: { type: "string" },
+        datetime: { type: "string", description: "ISO date/time" },
+        endDatetime: { type: "string", description: "ISO date/time" },
+        applicationId: { type: "string" },
+        companyId: { type: "string" },
+        contactIds: { type: "array", items: { type: "string" } },
+        prepNotes: { type: "string" },
+        done: { type: "boolean" },
+      },
+      required: ["type", "title"],
+    },
+  },
+  {
+    name: "vexa_update_timeline_event",
+    description: "Update any field of an existing Vexa timeline event, including its date, title, notes, links, or completion state.",
+    inputSchema: { type: "object", properties: { id: { type: "string" }, type: { type: "string" }, title: { type: "string" }, datetime: { type: "string" }, endDatetime: { type: "string" }, applicationId: { type: "string" }, companyId: { type: "string" }, contactIds: { type: "array", items: { type: "string" } }, prepNotes: { type: "string" }, done: { type: "boolean" } }, required: ["id"] },
+  },
+  {
+    name: "vexa_delete_timeline_event",
+    description: "Delete a timeline event by ID.",
+    inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+  },
+  {
+    name: "vexa_reorder_table",
+    description: "Persist the visible order of rows in any Vexa table. Pass row IDs from vexa_get_table_rows in the desired order; omitted existing rows remain after them.",
+    inputSchema: { type: "object", properties: { table: { type: "string", enum: ["applications", "jobs", "companies", "contacts", "tasks", "events"] }, orderedIds: { type: "array", items: { type: "string" } } }, required: ["table", "orderedIds"] },
+  },
 ];
 
 const CORS_HEADERS = {
@@ -234,6 +292,14 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, x-api-key",
 };
+
+function isAuthorized(request: Request) {
+  const expected = process.env.MCP_API_KEY?.trim();
+  if (!expected) return true;
+  const supplied = request.headers.get("x-api-key")?.trim() ||
+    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
+  return supplied === expected;
+}
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -258,8 +324,29 @@ export async function GET(request: Request) {
       version: "1.0.0",
       description: "Direct AI agent & ChatGPT integration for Vexa tasks, Eisenhower matrix, and CRM workspace tables.",
       mcpEndpoint: `${baseUrl}/api/mcp`,
+      authentication: {
+        required: Boolean(process.env.MCP_API_KEY),
+        header: "x-api-key or Authorization: Bearer <MCP_API_KEY>",
+      },
       restEndpoint: `${baseUrl}/api/ai/action`,
       openApiSchema: `${baseUrl}/api/ai/openapi.json`,
+      routes: {
+        discovery: {
+          method: "GET",
+          path: "/api/mcp",
+          description: "Returns this capability manifest, tool schemas, authentication details, and setup instructions.",
+        },
+        rpc: {
+          method: "POST",
+          path: "/api/mcp",
+          description: "JSON-RPC 2.0 MCP transport. Use initialize, tools/list, and tools/call.",
+        },
+        restFallback: {
+          method: "POST",
+          path: "/api/ai/action",
+          description: "Non-MCP action fallback for agents that only support HTTP actions.",
+        },
+      },
       capabilities: {
         tasks: {
           categories: ["personal", "college", "interview", "other"],
@@ -267,7 +354,7 @@ export async function GET(request: Request) {
           actions: ["list", "add", "update", "delete", "toggle_done"],
         },
         tables: {
-          tables: ["applications", "jobs", "companies", "contacts", "tasks"],
+          tables: ["applications", "jobs", "companies", "contacts", "tasks", "events"],
           actions: ["list", "query", "insert", "update", "delete"],
         },
       },
@@ -286,6 +373,12 @@ export async function GET(request: Request) {
  * Full JSON-RPC 2.0 Model Context Protocol (MCP) transport.
  */
 export async function POST(request: Request) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json(
+      { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Unauthorized MCP request" } },
+      { status: 401, headers: { ...CORS_HEADERS, "WWW-Authenticate": "Bearer" } }
+    );
+  }
   try {
     const body = await request.json();
     const id = body.id !== undefined ? body.id : null;
@@ -396,6 +489,36 @@ export async function POST(request: Request) {
           resultData = await executeDeleteTableRow(toolArgs);
           break;
 
+        case "vexa_get_workspace":
+        case "get_workspace":
+          resultData = await executeGetWorkspace();
+          break;
+
+        case "vexa_list_timeline_events":
+        case "list_timeline_events":
+          resultData = await executeListEvents(toolArgs);
+          break;
+
+        case "vexa_add_timeline_event":
+        case "add_timeline_event":
+          resultData = await executeAddEvent(toolArgs);
+          break;
+
+        case "vexa_update_timeline_event":
+        case "update_timeline_event":
+          resultData = await executeUpdateEvent(toolArgs);
+          break;
+
+        case "vexa_delete_timeline_event":
+        case "delete_timeline_event":
+          resultData = await executeDeleteEvent(toolArgs);
+          break;
+
+        case "vexa_reorder_table":
+        case "reorder_table":
+          resultData = await executeReorderTable(toolArgs);
+          break;
+
         default:
           return NextResponse.json(
             {
@@ -443,6 +566,12 @@ export async function POST(request: Request) {
       else if (toolName.includes("add_table_row")) resultData = await executeAddTableRow(params);
       else if (toolName.includes("update_table_row")) resultData = await executeUpdateTableRow(params);
       else if (toolName.includes("delete_table_row")) resultData = await executeDeleteTableRow(params);
+      else if (toolName.includes("get_workspace")) resultData = await executeGetWorkspace();
+      else if (toolName.includes("list_timeline_events")) resultData = await executeListEvents(params);
+      else if (toolName.includes("add_timeline_event")) resultData = await executeAddEvent(params);
+      else if (toolName.includes("update_timeline_event")) resultData = await executeUpdateEvent(params);
+      else if (toolName.includes("delete_timeline_event")) resultData = await executeDeleteEvent(params);
+      else if (toolName.includes("reorder_table")) resultData = await executeReorderTable(params);
 
       return NextResponse.json(
         { jsonrpc: "2.0", id, result: resultData },
