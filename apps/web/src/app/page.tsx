@@ -404,82 +404,26 @@ export default function EisenhowerMatrixPage() {
   }, [tasks]);
 
   return (
-    <div className="flex h-full w-full flex-col gap-3.5 pt-2 overflow-hidden select-none">
-      {/* ── Compact Controls Toolbar ── */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2.5 pb-1">
-        {/* Category Filter Pills */}
-        <div className="flex items-center gap-2 overflow-x-auto vexa-scroll-hide py-1">
-          <button
-            type="button"
-            onClick={() => setFilterCategory("all")}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium transition-all",
-              filterCategory === "all"
-                ? "bg-foreground text-background shadow-sm font-semibold"
-                : "bg-muted/70 text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <span>All</span>
-            <span className="text-[11px] opacity-75">({categoryCounts.all})</span>
-          </button>
-
-          {/* Personal (Pink Neon) */}
-          <button
-            type="button"
-            onClick={() => setFilterCategory("personal")}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-all",
-              filterCategory === "personal"
-                ? "border-pink-500 bg-pink-500 text-white font-semibold"
-                : "border-pink-500/40 bg-pink-500/10 text-pink-300 hover:border-pink-400"
-            )}
-          >
-            <span className="size-1.5 rounded-full bg-pink-400" />
-            <span>Personal</span>
-            <span className="text-[11px] opacity-80">{categoryCounts.personal}</span>
-          </button>
-
-          {/* College (Green Neon) */}
-          <button
-            type="button"
-            onClick={() => setFilterCategory("college")}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-all",
-              filterCategory === "college"
-                ? "border-emerald-500 bg-emerald-500 text-white font-semibold"
-                : "border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400"
-            )}
-          >
-            <span className="size-1.5 rounded-full bg-emerald-400" />
-            <span>College</span>
-            <span className="text-[11px] opacity-80">{categoryCounts.college}</span>
-          </button>
-
-          {/* Interview Prep & Projects (Cyan Neon) */}
-          <button
-            type="button"
-            onClick={() => setFilterCategory("interview")}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-all",
-              filterCategory === "interview"
-                ? "border-cyan-500 bg-cyan-500 text-white font-semibold"
-                : "border-cyan-500/40 bg-cyan-500/10 text-cyan-300 hover:border-cyan-400"
-            )}
-          >
-            <span className="size-1.5 rounded-full bg-cyan-400" />
-            <span>Prep / Projects</span>
-            <span className="text-[11px] opacity-80">{categoryCounts.interview}</span>
-          </button>
+    <div className="flex h-full w-full flex-col gap-2 pt-1 overflow-hidden select-none">
+      {/* ── Compact Controls Toolbar: Search & Add only ── */}
+      <div className="flex shrink-0 items-center justify-between gap-3 px-1 pb-1">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Eisenhower Matrix
+          </span>
+          <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[11px] font-mono font-medium text-foreground">
+            {tasks.filter((t) => !t.done).length} active
+          </span>
         </div>
 
         {/* Right Tools: Search + Add Task */}
         <div className="flex items-center gap-2 ml-auto">
-          <div className="relative w-40 sm:w-60">
+          <div className="relative w-48 sm:w-72">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search tasks…"
+              placeholder="Search all tasks…"
               className="h-8 rounded-full pl-8 pr-12 text-xs"
             />
             <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
@@ -509,7 +453,7 @@ export default function EisenhowerMatrixPage() {
             className="h-8 gap-1 rounded-full bg-primary px-3.5 text-xs font-semibold shadow-sm hover:opacity-90"
           >
             <Plus className="size-3.5" />
-            <span>Add</span>
+            <span>Add Task</span>
           </Button>
         </div>
       </div>
@@ -627,7 +571,7 @@ export default function EisenhowerMatrixPage() {
                             <th className="py-1.5 px-2 font-medium">Task</th>
                             <th className="w-28 py-1.5 px-2 font-medium hidden sm:table-cell">Category</th>
                             <th className="w-20 py-1.5 px-2 text-right font-medium">Due</th>
-                            <th className="w-16 py-1.5 px-2 text-right font-medium" />
+                            <th className="w-8 py-1.5 px-2 text-right font-medium" />
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border/20">
@@ -699,24 +643,7 @@ export default function EisenhowerMatrixPage() {
 
                                 {/* Actions */}
                                 <td className="py-2 px-2 text-right whitespace-nowrap">
-                                  <div className="opacity-0 group-hover/row:opacity-100 transition-opacity flex items-center justify-end gap-1">
-                                    {(["q1", "q2", "q3", "q4"] as const).map((targetQ) => {
-                                      if (targetQ === quad.id) return null;
-                                      return (
-                                        <button
-                                          key={targetQ}
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            void moveQuadrant(task.id, targetQ);
-                                          }}
-                                          className="size-4 rounded text-[8px] font-mono uppercase bg-muted/70 hover:bg-foreground hover:text-background text-muted-foreground flex items-center justify-center transition-colors"
-                                          title={`Move to ${targetQ.toUpperCase()}`}
-                                        >
-                                          {targetQ.toUpperCase()}
-                                        </button>
-                                      );
-                                    })}
+                                  <div className="opacity-0 group-hover/row:opacity-100 transition-opacity flex items-center justify-end">
                                     <button
                                       type="button"
                                       onClick={(e) => {
@@ -726,7 +653,7 @@ export default function EisenhowerMatrixPage() {
                                       className="size-4 rounded text-muted-foreground hover:text-destructive flex items-center justify-center hover:bg-destructive/10 transition-colors"
                                       title="Delete task"
                                     >
-                                      <Trash2 className="size-2.5" />
+                                      <Trash2 className="size-3" />
                                     </button>
                                   </div>
                                 </td>

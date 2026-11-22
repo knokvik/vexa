@@ -94,7 +94,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         className={cn(
           "relative z-0 overflow-x-hidden pt-[4.25rem] sm:pt-[4.75rem]",
           pathname === "/"
-            ? "vexa-shell h-[calc(100dvh-4.25rem)] sm:h-[calc(100dvh-4.75rem)] pb-4 overflow-hidden flex flex-col"
+            ? "w-full max-w-[1720px] mx-auto px-2 sm:px-4 lg:px-6 h-[calc(100dvh-4.25rem)] sm:h-[calc(100dvh-4.75rem)] pb-2 overflow-hidden flex flex-col"
             : "vexa-shell pb-28 sm:pb-12 md:pb-12"
         )}
       >
