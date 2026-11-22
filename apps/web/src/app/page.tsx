@@ -404,23 +404,23 @@ export default function EisenhowerMatrixPage() {
   }, [tasks]);
 
   return (
-    <div className="flex h-full w-full flex-col gap-2.5 overflow-hidden select-none">
+    <div className="flex h-full w-full flex-col gap-3.5 pt-2 overflow-hidden select-none">
       {/* ── Compact Controls Toolbar ── */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2.5 pb-1">
         {/* Category Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto vexa-scroll-hide py-0.5">
+        <div className="flex items-center gap-2 overflow-x-auto vexa-scroll-hide py-1">
           <button
             type="button"
             onClick={() => setFilterCategory("all")}
             className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-all",
+              "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium transition-all",
               filterCategory === "all"
-                ? "bg-foreground text-background shadow-sm"
+                ? "bg-foreground text-background shadow-sm font-semibold"
                 : "bg-muted/70 text-muted-foreground hover:text-foreground"
             )}
           >
             <span>All</span>
-            <span className="text-[10px] opacity-75">({categoryCounts.all})</span>
+            <span className="text-[11px] opacity-75">({categoryCounts.all})</span>
           </button>
 
           {/* Personal (Pink Neon) */}
@@ -428,15 +428,15 @@ export default function EisenhowerMatrixPage() {
             type="button"
             onClick={() => setFilterCategory("personal")}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all",
+              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-all",
               filterCategory === "personal"
-                ? "border-pink-500 bg-pink-500 text-white"
+                ? "border-pink-500 bg-pink-500 text-white font-semibold"
                 : "border-pink-500/40 bg-pink-500/10 text-pink-300 hover:border-pink-400"
             )}
           >
             <span className="size-1.5 rounded-full bg-pink-400" />
             <span>Personal</span>
-            <span className="text-[10px] opacity-80">{categoryCounts.personal}</span>
+            <span className="text-[11px] opacity-80">{categoryCounts.personal}</span>
           </button>
 
           {/* College (Green Neon) */}
@@ -444,15 +444,15 @@ export default function EisenhowerMatrixPage() {
             type="button"
             onClick={() => setFilterCategory("college")}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all",
+              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-all",
               filterCategory === "college"
-                ? "border-emerald-500 bg-emerald-500 text-white"
+                ? "border-emerald-500 bg-emerald-500 text-white font-semibold"
                 : "border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400"
             )}
           >
             <span className="size-1.5 rounded-full bg-emerald-400" />
             <span>College</span>
-            <span className="text-[10px] opacity-80">{categoryCounts.college}</span>
+            <span className="text-[11px] opacity-80">{categoryCounts.college}</span>
           </button>
 
           {/* Interview Prep & Projects (Cyan Neon) */}
@@ -460,27 +460,27 @@ export default function EisenhowerMatrixPage() {
             type="button"
             onClick={() => setFilterCategory("interview")}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all",
+              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-all",
               filterCategory === "interview"
-                ? "border-cyan-500 bg-cyan-500 text-white"
+                ? "border-cyan-500 bg-cyan-500 text-white font-semibold"
                 : "border-cyan-500/40 bg-cyan-500/10 text-cyan-300 hover:border-cyan-400"
             )}
           >
             <span className="size-1.5 rounded-full bg-cyan-400" />
             <span>Prep / Projects</span>
-            <span className="text-[10px] opacity-80">{categoryCounts.interview}</span>
+            <span className="text-[11px] opacity-80">{categoryCounts.interview}</span>
           </button>
         </div>
 
         {/* Right Tools: Search + Add Task */}
-        <div className="flex items-center gap-1.5 ml-auto">
-          <div className="relative w-36 sm:w-56">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
+        <div className="flex items-center gap-2 ml-auto">
+          <div className="relative w-40 sm:w-60">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search tasks…"
-              className="h-7 rounded-full pl-7 pr-12 text-xs"
+              className="h-8 rounded-full pl-8 pr-12 text-xs"
             />
             <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
               {search && (
@@ -506,7 +506,7 @@ export default function EisenhowerMatrixPage() {
               setAddModalOpen(true);
             }}
             size="sm"
-            className="h-7 gap-1 rounded-full bg-primary px-3 text-xs font-semibold shadow-sm hover:opacity-90"
+            className="h-8 gap-1 rounded-full bg-primary px-3.5 text-xs font-semibold shadow-sm hover:opacity-90"
           >
             <Plus className="size-3.5" />
             <span>Add</span>
@@ -621,13 +621,13 @@ export default function EisenhowerMatrixPage() {
                       </div>
                     ) : (
                       <table className="w-full text-left text-xs border-collapse">
-                        <thead className="sticky top-0 bg-background/95 backdrop-blur-sm text-[10px] uppercase font-mono text-muted-foreground/70 border-b border-border/30 z-10 select-none">
+                        <thead className="sticky top-0 bg-background/95 backdrop-blur-sm text-[11px] uppercase font-mono text-muted-foreground/80 border-b border-border/30 z-10 select-none">
                           <tr>
-                            <th className="w-6 py-1 px-1.5 text-center font-medium" />
-                            <th className="py-1 px-1.5 font-medium">Task</th>
-                            <th className="w-24 py-1 px-1.5 font-medium hidden sm:table-cell">Category</th>
-                            <th className="w-16 py-1 px-1.5 text-right font-medium">Due</th>
-                            <th className="w-16 py-1 px-1.5 text-right font-medium" />
+                            <th className="w-7 py-1.5 px-2 text-center font-medium" />
+                            <th className="py-1.5 px-2 font-medium">Task</th>
+                            <th className="w-28 py-1.5 px-2 font-medium hidden sm:table-cell">Category</th>
+                            <th className="w-20 py-1.5 px-2 text-right font-medium">Due</th>
+                            <th className="w-16 py-1.5 px-2 text-right font-medium" />
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border/20">
@@ -643,19 +643,19 @@ export default function EisenhowerMatrixPage() {
                                 className="group/row hover:bg-muted/30 transition-colors cursor-grab active:cursor-grabbing"
                               >
                                 {/* Checkbox */}
-                                <td className="py-1.5 px-1.5 text-center">
+                                <td className="py-2 px-2 text-center">
                                   <button
                                     type="button"
                                     onClick={() => void toggleComplete(task)}
-                                    className="size-3.5 rounded-full border border-border/80 hover:border-emerald-500/80 flex items-center justify-center text-muted-foreground hover:text-emerald-400 transition-colors m-auto"
+                                    className="size-4 rounded-full border border-border/80 hover:border-emerald-500/80 flex items-center justify-center text-muted-foreground hover:text-emerald-400 transition-colors m-auto"
                                     title="Mark complete"
                                   >
-                                    <span className="size-1 rounded-full bg-transparent group-hover/row:bg-muted-foreground/30" />
+                                    <span className="size-1.5 rounded-full bg-transparent group-hover/row:bg-muted-foreground/30" />
                                   </button>
                                 </td>
 
                                 {/* Title */}
-                                <td className="py-1.5 px-1.5 font-medium text-[11px] text-foreground leading-snug">
+                                <td className="py-2 px-2 font-medium text-[12px] text-foreground leading-snug">
                                   <div className="flex items-center gap-1.5">
                                     <span className={cn("size-1.5 shrink-0 rounded-full sm:hidden", cat.dotColor)} />
                                     <span className="line-clamp-1" title={task.title}>
@@ -665,10 +665,10 @@ export default function EisenhowerMatrixPage() {
                                 </td>
 
                                 {/* Category Badge */}
-                                <td className="py-1.5 px-1.5 whitespace-nowrap hidden sm:table-cell">
+                                <td className="py-2 px-2 whitespace-nowrap hidden sm:table-cell">
                                   <span
                                     className={cn(
-                                      "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-medium leading-none",
+                                      "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium leading-none",
                                       cat.chipBorder,
                                       cat.chipBg,
                                       cat.chipText
@@ -680,11 +680,11 @@ export default function EisenhowerMatrixPage() {
                                 </td>
 
                                 {/* Due Date */}
-                                <td className="py-1.5 px-1.5 text-right font-mono text-[10px] whitespace-nowrap">
+                                <td className="py-2 px-2 text-right font-mono text-[11px] whitespace-nowrap">
                                   {deadline.text ? (
                                     <span
                                       className={cn(
-                                        "rounded px-1 py-0.2",
+                                        "rounded px-1.5 py-0.5",
                                         deadline.overdue
                                           ? "bg-rose-500/20 text-rose-300 font-bold"
                                           : "text-muted-foreground"
@@ -698,7 +698,7 @@ export default function EisenhowerMatrixPage() {
                                 </td>
 
                                 {/* Actions */}
-                                <td className="py-1.5 px-1.5 text-right whitespace-nowrap">
+                                <td className="py-2 px-2 text-right whitespace-nowrap">
                                   <div className="opacity-0 group-hover/row:opacity-100 transition-opacity flex items-center justify-end gap-1">
                                     {(["q1", "q2", "q3", "q4"] as const).map((targetQ) => {
                                       if (targetQ === quad.id) return null;
@@ -710,7 +710,7 @@ export default function EisenhowerMatrixPage() {
                                             e.stopPropagation();
                                             void moveQuadrant(task.id, targetQ);
                                           }}
-                                          className="size-3.5 rounded text-[8px] font-mono uppercase bg-muted/70 hover:bg-foreground hover:text-background text-muted-foreground flex items-center justify-center transition-colors"
+                                          className="size-4 rounded text-[8px] font-mono uppercase bg-muted/70 hover:bg-foreground hover:text-background text-muted-foreground flex items-center justify-center transition-colors"
                                           title={`Move to ${targetQ.toUpperCase()}`}
                                         >
                                           {targetQ.toUpperCase()}
@@ -723,7 +723,7 @@ export default function EisenhowerMatrixPage() {
                                         e.stopPropagation();
                                         void deleteTask(task.id);
                                       }}
-                                      className="size-3.5 rounded text-muted-foreground hover:text-destructive flex items-center justify-center hover:bg-destructive/10 transition-colors"
+                                      className="size-4 rounded text-muted-foreground hover:text-destructive flex items-center justify-center hover:bg-destructive/10 transition-colors"
                                       title="Delete task"
                                     >
                                       <Trash2 className="size-2.5" />

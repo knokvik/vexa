@@ -92,9 +92,9 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       {/* Offset for fixed header height + mobile floating nav */}
       <main
         className={cn(
-          "relative z-0 overflow-x-hidden pt-[3.75rem] sm:pt-[4.25rem]",
+          "relative z-0 overflow-x-hidden pt-[4.25rem] sm:pt-[4.75rem]",
           pathname === "/"
-            ? "vexa-shell h-[calc(100dvh-3.75rem)] sm:h-[calc(100dvh-4.25rem)] pb-4 overflow-hidden flex flex-col"
+            ? "vexa-shell h-[calc(100dvh-4.25rem)] sm:h-[calc(100dvh-4.75rem)] pb-4 overflow-hidden flex flex-col"
             : "vexa-shell pb-28 sm:pb-12 md:pb-12"
         )}
       >
