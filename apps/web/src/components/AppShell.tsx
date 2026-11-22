@@ -7,6 +7,7 @@ import { Settings } from "lucide-react";
 import { APP_NAME } from "@vexa/shared";
 import { cn } from "@/lib/utils";
 import { ModeToggle } from "@/components/mode-toggle";
+import { AiActivityIndicator } from "@/components/AiActivityIndicator";
 import { VexaLogo } from "@/components/VexaLogo";
 import { HeaderActivityTicker } from "@/components/HeaderActivityTicker";
 import { FloatingNav } from "@/components/FloatingNav";
@@ -83,6 +84,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           <div className="relative z-10 flex shrink-0 items-center justify-end gap-1.5">
             <HeaderActivityTicker />
             <div className="flex h-9 items-center gap-0 rounded-full bg-muted/80 p-0.5 shadow-sm ring-1 ring-black/5 dark:ring-white/10 sm:h-10 sm:gap-0.5 sm:p-1">
+              <AiActivityIndicator />
               <ModeToggle />
               <Link
                 href="/settings"

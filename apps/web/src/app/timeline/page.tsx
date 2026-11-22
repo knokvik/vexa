@@ -111,6 +111,25 @@ export default function TimelinePage() {
     [tasks]
   );
 
+  const deadlineReminders = useMemo(() => {
+    return openTasks
+      .filter((t) => Boolean(t.dueAt))
+      .map((t) => {
+        const d = daysUntil(t.dueAt);
+        return {
+          id: `task-deadline-${t.id}`,
+          task: t,
+          title: t.title,
+          days: d,
+          dueAt: t.dueAt,
+          kind: t.kind,
+          isOverdue: d != null && d < 0,
+          isToday: d === 0,
+        };
+      })
+      .sort((a, b) => (a.days ?? 999) - (b.days ?? 999));
+  }, [openTasks]);
+
   async function addTask() {
     if (!newTitle.trim()) return;
     setBusy(true);
@@ -201,7 +220,7 @@ export default function TimelinePage() {
               {openTasks.length} open
             </span>
           </div>
-          <div className="max-h-[555px] overflow-y-auto">
+          <div className="h-[520px] max-h-[520px] overflow-y-auto">
           <table className="w-full text-left">
             <thead className="sticky top-0 z-10 bg-card">
               <tr className="border-b text-[10px] font-medium text-muted-foreground">
@@ -319,14 +338,62 @@ export default function TimelinePage() {
         {/* System actions + interviews */}
         <div className="space-y-3">
           <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-            <div className="border-b bg-muted/40 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Suggested actions
+            <div className="flex items-center justify-between border-b bg-muted/40 px-3 py-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Suggested Actions & Deadlines
+              </span>
+              <span className="font-mono text-[10px] text-muted-foreground">
+                {deadlineReminders.length + (briefing?.openActions?.length || 0)} pending
+              </span>
             </div>
-            <ul className="max-h-48 divide-y overflow-y-auto">
-              {(briefing?.openActions || []).slice(0, 8).map((a) => (
+            <ul className="max-h-64 divide-y overflow-y-auto">
+              {/* Task deadline reminders */}
+              {deadlineReminders.map((d) => (
+                <li
+                  key={d.id}
+                  className="flex items-center justify-between gap-2 px-3 py-2.5 text-sm hover:bg-muted/30 transition-colors"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span
+                        className={cn(
+                          "rounded px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider",
+                          d.isOverdue
+                            ? "bg-destructive/15 text-destructive"
+                            : d.isToday
+                              ? "bg-amber-500/15 text-amber-500"
+                              : "bg-muted text-muted-foreground"
+                        )}
+                      >
+                        {d.isOverdue
+                          ? `${Math.abs(d.days ?? 0)}d Overdue`
+                          : d.isToday
+                            ? "Due Today"
+                            : `Due in ${d.days}d`}
+                      </span>
+                      <span className="truncate font-medium">{d.title}</span>
+                    </div>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">
+                      Deadline: {d.dueAt?.slice(0, 10)} · {d.kind.replace("_", " ")}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 shrink-0 gap-1 rounded-full text-xs hover:bg-primary hover:text-primary-foreground"
+                    onClick={() => void toggleTask(d.task)}
+                    title="Mark task completed"
+                  >
+                    <CheckCircle2 className="size-3" /> Done
+                  </Button>
+                </li>
+              ))}
+
+              {/* Ingested CRM actions */}
+              {(briefing?.openActions || []).map((a) => (
                 <li
                   key={a.id}
-                  className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
+                  className="flex items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-muted/30"
                 >
                   <div className="min-w-0">
                     <p className="truncate font-medium">{a.title}</p>
@@ -338,16 +405,17 @@ export default function TimelinePage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 shrink-0 text-xs"
+                    className="h-7 shrink-0 text-xs rounded-full"
                     onClick={() => void doneAction(a.id)}
                   >
                     <CheckCircle2 className="size-3.5" /> Done
                   </Button>
                 </li>
               ))}
-              {!briefing?.openActions?.length && (
+
+              {!deadlineReminders.length && !briefing?.openActions?.length && (
                 <li className="px-3 py-6 text-center text-xs text-muted-foreground">
-                  No system actions — ingest emails to generate follow-ups
+                  No pending deadlines or actions — all caught up!
                 </li>
               )}
             </ul>

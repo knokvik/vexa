@@ -10,6 +10,7 @@ import {
   executeUpdateTableRow,
   executeDeleteTableRow,
 } from "@/lib/ai-tools";
+import { detectAiProvider, recordAiActivity } from "@/lib/ai-activity";
 
 const MCP_TOOLS = [
   {
@@ -346,6 +347,7 @@ export async function POST(request: Request) {
     if (method === "tools/call") {
       const toolName = params.name;
       const toolArgs = params.arguments || {};
+      const provider = detectAiProvider(request.headers);
       let resultData: any;
 
       switch (toolName) {
@@ -407,6 +409,8 @@ export async function POST(request: Request) {
             { status: 404, headers: CORS_HEADERS }
           );
       }
+
+      recordAiActivity(provider, toolName, toolArgs.title || toolArgs.id || toolArgs.table || "");
 
       return NextResponse.json(
         {

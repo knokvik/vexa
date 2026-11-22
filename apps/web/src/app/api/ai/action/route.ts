@@ -10,6 +10,7 @@ import {
   executeUpdateTableRow,
   executeDeleteTableRow,
 } from "@/lib/ai-tools";
+import { detectAiProvider, recordAiActivity } from "@/lib/ai-activity";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -167,6 +168,9 @@ export async function POST(request: Request) {
           { status: 400, headers: CORS_HEADERS }
         );
     }
+
+    const provider = body.provider || detectAiProvider(request.headers);
+    recordAiActivity(provider, action, body.title || body.id || body.table || "");
 
     return NextResponse.json(result, { headers: CORS_HEADERS });
   } catch (err: any) {
