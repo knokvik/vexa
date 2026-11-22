@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { loadCrm, listUserTasks } from "@/lib/crm/db";
+import {
+  executeAddTableRow,
+  executeUpdateTableRow,
+  executeDeleteTableRow,
+} from "@/lib/ai-tools";
 
 /**
  * GET /api/crm/tables
@@ -178,4 +183,51 @@ export async function GET() {
       contacts: db.contacts.length,
     },
   });
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const table = body.table;
+    if (!table) return NextResponse.json({ error: "table parameter required" }, { status: 400 });
+    const result = await executeAddTableRow({ table, data: body.data || body });
+    return NextResponse.json(result);
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "failed" }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json();
+    const table = body.table;
+    const id = body.id;
+    if (!table || !id) return NextResponse.json({ error: "table and id required" }, { status: 400 });
+    const result = await executeUpdateTableRow({ table, id, data: body.data || body });
+    return NextResponse.json(result);
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "failed" }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    let table = searchParams.get("table");
+    let id = searchParams.get("id");
+    if (!table || !id) {
+      try {
+        const body = await request.json();
+        table = table || body.table;
+        id = id || body.id;
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!table || !id) return NextResponse.json({ error: "table and id required" }, { status: 400 });
+    const result = await executeDeleteTableRow({ table, id });
+    return NextResponse.json(result);
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "failed" }, { status: 500 });
+  }
 }

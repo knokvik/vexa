@@ -143,6 +143,16 @@ export async function listCompanies() {
   return (await loadCrm()).companies;
 }
 
+export async function deleteCompany(id: string): Promise<boolean> {
+  let ok = false;
+  await saveCrm((db) => {
+    const before = db.companies.length;
+    db.companies = db.companies.filter((c) => c.id !== id);
+    ok = db.companies.length < before;
+  });
+  return ok;
+}
+
 // ── Contacts ──────────────────────────────────────────
 
 export async function upsertContact(
@@ -195,6 +205,16 @@ export async function listContacts() {
   return (await loadCrm()).contacts;
 }
 
+export async function deleteContact(id: string): Promise<boolean> {
+  let ok = false;
+  await saveCrm((db) => {
+    const before = db.contacts.length;
+    db.contacts = db.contacts.filter((c) => c.id !== id);
+    ok = db.contacts.length < before;
+  });
+  return ok;
+}
+
 // ── Jobs ──────────────────────────────────────────────
 
 export async function upsertCrmJob(
@@ -239,6 +259,20 @@ export async function upsertCrmJob(
     }
   });
   return result!;
+}
+
+export async function listCrmJobs() {
+  return (await loadCrm()).jobs;
+}
+
+export async function deleteCrmJob(id: string): Promise<boolean> {
+  let ok = false;
+  await saveCrm((db) => {
+    const before = db.jobs.length;
+    db.jobs = db.jobs.filter((j) => j.id !== id);
+    ok = db.jobs.length < before;
+  });
+  return ok;
 }
 
 // ── Applications ──────────────────────────────────────
@@ -321,6 +355,16 @@ export async function listApplications() {
 
 export async function getApplication(id: string) {
   return (await loadCrm()).applications.find((a) => a.id === id) ?? null;
+}
+
+export async function deleteApplication(id: string): Promise<boolean> {
+  let ok = false;
+  await saveCrm((db) => {
+    const before = db.applications.length;
+    db.applications = db.applications.filter((a) => a.id !== id);
+    ok = db.applications.length < before;
+  });
+  return ok;
 }
 
 // ── Emails ────────────────────────────────────────────

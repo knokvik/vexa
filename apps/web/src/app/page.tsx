@@ -597,139 +597,144 @@ export default function EisenhowerMatrixPage() {
                     </div>
                   </div>
 
-                  {/* Scattered chips area (No angle tilt, naturally positioned within quadrant) */}
-                  <div className="flex-1 min-h-0 overflow-y-auto vexa-scroll-hide p-2 flex flex-wrap content-start items-start gap-2.5">
+                  {/* Scrollable Tasks Table for this Quadrant */}
+                  <div className="flex-1 min-h-0 overflow-y-auto vexa-scroll-hide">
                     {loading ? (
                       <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
                         <Loader2 className="mr-1.5 size-3.5 animate-spin text-primary" />
-                        Loading…
+                        Loading tasks…
                       </div>
                     ) : quadTasks.length === 0 ? (
-                      <div className="flex h-full w-full items-center justify-center text-[11px] text-muted-foreground/60 italic">
-                        Empty · drop chip or click +
+                      <div className="flex h-full flex-col items-center justify-center p-4 text-center text-xs text-muted-foreground/60 italic">
+                        <span>No tasks in {quad.tag}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTargetQuadrant(quad.id);
+                            setAddModalOpen(true);
+                          }}
+                          className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-border/50 px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-muted/50 hover:text-foreground not-italic transition-colors"
+                        >
+                          <Plus className="size-2.5" />
+                          <span>Add task</span>
+                        </button>
                       </div>
                     ) : (
-                      quadTasks.map((task, idx) => {
-                        const cat = resolveCategory(task.kind);
-                        const deadline = formatShortDeadline(task.dueAt);
-                        const offsets = getOrganicOffsets(task.id, idx);
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead className="sticky top-0 bg-background/95 backdrop-blur-sm text-[10px] uppercase font-mono text-muted-foreground/70 border-b border-border/30 z-10 select-none">
+                          <tr>
+                            <th className="w-6 py-1 px-1.5 text-center font-medium" />
+                            <th className="py-1 px-1.5 font-medium">Task</th>
+                            <th className="w-24 py-1 px-1.5 font-medium hidden sm:table-cell">Category</th>
+                            <th className="w-16 py-1 px-1.5 text-right font-medium">Due</th>
+                            <th className="w-16 py-1 px-1.5 text-right font-medium" />
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/20">
+                          {quadTasks.map((task) => {
+                            const cat = resolveCategory(task.kind);
+                            const deadline = formatShortDeadline(task.dueAt);
 
-                        return (
-                          <div
-                            key={task.id}
-                            style={{
-                              marginLeft: offsets.marginLeft,
-                              marginTop: offsets.marginTop,
-                            }}
-                            className="relative group/wrapper inline-block"
-                          >
-                            <div
-                              draggable
-                              onDragStart={(e) => handleDragStart(e, task.id)}
-                              className={cn(
-                                "group/chip relative inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs cursor-grab active:cursor-grabbing",
-                                "transition-all duration-300 ease-out select-none",
-                                "group-hover/wrapper:absolute group-hover/wrapper:left-0 group-hover/wrapper:top-0 group-hover/wrapper:z-30 group-hover/wrapper:w-max group-hover/wrapper:max-w-[420px] group-hover/wrapper:shadow-xl group-hover/wrapper:backdrop-blur-md",
-                                "max-w-[280px]",
-                                cat.chipBorder,
-                                cat.chipBg
-                              )}
-                            >
-                              {/* Complete Checkbox */}
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void toggleComplete(task);
-                                }}
-                                className="size-3 shrink-0 rounded-full border border-current opacity-70 hover:opacity-100 flex items-center justify-center transition-all"
-                                title="Mark completed"
+                            return (
+                              <tr
+                                key={task.id}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, task.id)}
+                                className="group/row hover:bg-muted/30 transition-colors cursor-grab active:cursor-grabbing"
                               >
-                                <span className="size-1 rounded-full bg-current opacity-40 group-hover/chip:opacity-100" />
-                              </button>
+                                {/* Checkbox */}
+                                <td className="py-1.5 px-1.5 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => void toggleComplete(task)}
+                                    className="size-3.5 rounded-full border border-border/80 hover:border-emerald-500/80 flex items-center justify-center text-muted-foreground hover:text-emerald-400 transition-colors m-auto"
+                                    title="Mark complete"
+                                  >
+                                    <span className="size-1 rounded-full bg-transparent group-hover/row:bg-muted-foreground/30" />
+                                  </button>
+                                </td>
 
-                              {/* Category Dot */}
-                              <span className={cn("size-1.5 shrink-0 rounded-full", cat.dotColor)} />
+                                {/* Title */}
+                                <td className="py-1.5 px-1.5 font-medium text-[11px] text-foreground leading-snug">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={cn("size-1.5 shrink-0 rounded-full sm:hidden", cat.dotColor)} />
+                                    <span className="line-clamp-1" title={task.title}>
+                                      {task.title}
+                                    </span>
+                                  </div>
+                                </td>
 
-                              {/* Task Title: Visible in normal state up to available space, expands further on hover */}
-                              <span
-                                className={cn(
-                                  "truncate font-medium text-[11px] tracking-tight transition-[max-width,color] duration-300 ease-out",
-                                  "max-w-[160px] group-hover/wrapper:max-w-[300px]",
-                                  cat.chipText
-                                )}
-                                title={task.title}
-                              >
-                                {task.title}
-                              </span>
+                                {/* Category Badge */}
+                                <td className="py-1.5 px-1.5 whitespace-nowrap hidden sm:table-cell">
+                                  <span
+                                    className={cn(
+                                      "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-medium leading-none",
+                                      cat.chipBorder,
+                                      cat.chipBg,
+                                      cat.chipText
+                                    )}
+                                  >
+                                    <span className={cn("size-1 rounded-full", cat.dotColor)} />
+                                    <span>{cat.label}</span>
+                                  </span>
+                                </td>
 
-                              {/* Deadline Tag */}
-                              {deadline.text && (
-                                <span
-                                  className={cn(
-                                    "shrink-0 rounded-full px-1.5 py-0.2 text-[9px] font-mono",
-                                    deadline.overdue
-                                      ? "bg-rose-500/20 text-rose-300 font-bold border border-rose-500/40"
-                                      : "bg-black/25 dark:bg-white/10 text-muted-foreground"
+                                {/* Due Date */}
+                                <td className="py-1.5 px-1.5 text-right font-mono text-[10px] whitespace-nowrap">
+                                  {deadline.text ? (
+                                    <span
+                                      className={cn(
+                                        "rounded px-1 py-0.2",
+                                        deadline.overdue
+                                          ? "bg-rose-500/20 text-rose-300 font-bold"
+                                          : "text-muted-foreground"
+                                      )}
+                                    >
+                                      {deadline.text}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground/40">—</span>
                                   )}
-                                >
-                                  {deadline.text}
-                                </span>
-                              )}
+                                </td>
 
-                              {/* Quick Actions on Hover */}
-                              <div className="opacity-0 group-hover/wrapper:opacity-100 transition-opacity flex items-center gap-0.5 ml-0.5 shrink-0">
-                                {(["q1", "q2", "q3", "q4"] as const).map((targetQ) => {
-                                  if (targetQ === quad.id) return null;
-                                  return (
+                                {/* Actions */}
+                                <td className="py-1.5 px-1.5 text-right whitespace-nowrap">
+                                  <div className="opacity-0 group-hover/row:opacity-100 transition-opacity flex items-center justify-end gap-1">
+                                    {(["q1", "q2", "q3", "q4"] as const).map((targetQ) => {
+                                      if (targetQ === quad.id) return null;
+                                      return (
+                                        <button
+                                          key={targetQ}
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            void moveQuadrant(task.id, targetQ);
+                                          }}
+                                          className="size-3.5 rounded text-[8px] font-mono uppercase bg-muted/70 hover:bg-foreground hover:text-background text-muted-foreground flex items-center justify-center transition-colors"
+                                          title={`Move to ${targetQ.toUpperCase()}`}
+                                        >
+                                          {targetQ.toUpperCase()}
+                                        </button>
+                                      );
+                                    })}
                                     <button
-                                      key={targetQ}
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        void moveQuadrant(task.id, targetQ);
+                                        void deleteTask(task.id);
                                       }}
-                                      className="size-4 rounded text-[8px] font-mono uppercase bg-black/30 hover:bg-black/60 dark:bg-white/10 dark:hover:bg-white/20 text-muted-foreground hover:text-foreground flex items-center justify-center"
-                                      title={`Move to ${targetQ.toUpperCase()}`}
+                                      className="size-3.5 rounded text-muted-foreground hover:text-destructive flex items-center justify-center hover:bg-destructive/10 transition-colors"
+                                      title="Delete task"
                                     >
-                                      {targetQ.toUpperCase()}
+                                      <Trash2 className="size-2.5" />
                                     </button>
-                                  );
-                                })}
-
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void deleteTask(task.id);
-                                  }}
-                                  className="size-4 rounded text-[8px] hover:bg-destructive/20 text-muted-foreground hover:text-destructive flex items-center justify-center"
-                                  title="Delete task"
-                                >
-                                  <Trash2 className="size-2.5" />
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* Invisible placeholder footprint to preserve exact slot dimensions */}
-                            <div
-                              aria-hidden="true"
-                              className="invisible pointer-events-none inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs max-w-[280px]"
-                            >
-                              <span className="size-3 shrink-0" />
-                              <span className="size-1.5 shrink-0" />
-                              <span className="truncate font-medium text-[11px] max-w-[160px]">
-                                {task.title}
-                              </span>
-                              {deadline.text && (
-                                <span className="shrink-0 text-[9px] font-mono px-1.5">
-                                  {deadline.text}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     )}
                   </div>
                 </div>
