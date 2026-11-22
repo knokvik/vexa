@@ -183,6 +183,7 @@ export default function EisenhowerMatrixPage() {
   const [tasks, setTasks] = useState<CrmUserTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [isTableView, setIsTableView] = useState(false);
@@ -200,12 +201,15 @@ export default function EisenhowerMatrixPage() {
     if (!isSilent) setRefreshing(true);
     try {
       const res = await fetch("/api/crm/tasks?all=1");
-      const data = await res.json();
-      if (data.ok && Array.isArray(data.tasks)) {
-        setTasks(data.tasks);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok || !Array.isArray(data.tasks)) {
+        throw new Error(data.error || "Task data could not be loaded");
       }
+      setTasks(data.tasks);
+      setLoadError(null);
     } catch (e) {
       console.error("Failed to load tasks", e);
+      setLoadError(e instanceof Error ? e.message : "Task data could not be loaded");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -409,6 +413,14 @@ export default function EisenhowerMatrixPage() {
 
   return (
     <div className="flex h-full w-full flex-col gap-2 pt-1 overflow-hidden select-none">
+      {loadError && (
+        <div className="mx-1 flex shrink-0 items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+          <span>{tasks.length ? `Refresh paused: ${loadError}` : loadError}</span>
+          <button type="button" className="font-semibold underline" onClick={() => void loadTasks(false)}>
+            Retry
+          </button>
+        </div>
+      )}
       {/* ── Compact Controls Toolbar: Search & Add only ── */}
       <div className="flex shrink-0 items-center justify-between gap-3 px-1 pb-1">
         <div className="flex items-center gap-2">

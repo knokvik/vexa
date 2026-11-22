@@ -57,3 +57,14 @@ Agents should call `vexa_get_workspace` first, then use `vexa_list_tables` or `v
 ## Live dashboard behavior
 
 The dashboard polls the CRM tables and task feed every five seconds while the page is visible. A task or row created through MCP therefore appears without a manual reload. Tables sort newest `updatedAt` first by default, and manual drag-and-drop ordering is persisted through `vexa_reorder_table` (or `PATCH /api/crm/tables` with `table` and `orderedIds`).
+
+## Vercel persistence
+
+Vercel functions do not share their local filesystem. Do not use `/tmp/vexa-data` for real CRM data. Configure a Redis-compatible REST store in Vercel Production environment variables:
+
+```env
+KV_REST_API_URL=https://<your-upstash-endpoint>
+KV_REST_API_TOKEN=<your-upstash-token>
+```
+
+Upstash Redis and Vercel KV both expose compatible REST URL/token variables. After adding them, redeploy. Vexa will then read and write the same CRM snapshot across serverless instances. If the variables are missing in production, Vexa returns a visible storage error instead of silently showing an empty task list.

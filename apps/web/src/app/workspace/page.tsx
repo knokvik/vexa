@@ -79,18 +79,25 @@ export default function WorkspacePage() {
   >("conference");
   const [busy, setBusy] = useState(false);
   const [draggedRow, setDraggedRow] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
       const res = await fetch("/api/crm/tables");
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok || !data.tables) {
+        throw new Error(data.error || "Workspace data could not be loaded");
+      }
       setApps(data.tables?.applications?.rows || []);
       setJobs(data.tables?.jobs?.rows || []);
       setCompanies(data.tables?.companies?.rows || []);
       setConferences(data.side?.conferences || []);
       setScholarships(data.side?.scholarships || []);
       setHackathons(data.side?.hackathons || []);
+      setLoadError(null);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Workspace data could not be loaded");
     } finally {
       setLoading(false);
     }
@@ -199,6 +206,14 @@ export default function WorkspacePage() {
 
   return (
     <div className="space-y-4 pt-1 sm:pt-2">
+      {loadError && (
+        <div className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+          <span>{apps.length || jobs.length || companies.length ? `Refresh paused: ${loadError}` : loadError}</span>
+          <button type="button" className="font-semibold underline" onClick={() => void load()}>
+            Retry
+          </button>
+        </div>
+      )}
       <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
         {/* Left — detailed job tables */}
         <div className="min-w-0 space-y-3">

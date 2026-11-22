@@ -7,6 +7,7 @@ import {
   probeDataWritable,
 } from "@/lib/data-root";
 import { getAppUrl } from "@/lib/oauth/config";
+import { getCrmStorageStatus } from "@/lib/crm/db";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ export async function GET() {
   const llm = getLlmRuntimeStatus();
   const cfg = getOpenRouterConfig();
   const disk = await probeDataWritable();
+  const crmStorage = getCrmStorageStatus();
   const firecrawl = envKey("FIRECRAWL_API_KEY");
   const exa = envKey("EXA_API_KEY");
   const hunter = envKey("HUNTER_API_KEY");
@@ -160,11 +162,13 @@ export async function GET() {
       kind: "storage",
       free: true,
       // Writable /tmp is "ready" on Vercel (green). Note ephemeral in workingOn.
-      status: !disk.ok ? "offline" : "ready",
+      status: !disk.ok || !crmStorage.configured && isServerlessRuntime() ? "offline" : "ready",
       workingOn: !disk.ok
         ? `Not writable: ${disk.error || disk.root}`
+        : !crmStorage.configured && isServerlessRuntime()
+          ? crmStorage.warning || "Configure shared durable storage"
         : disk.ephemeral
-          ? `Ready (ephemeral /tmp — resets on cold start)`
+          ? `Ready (ephemeral /tmp)`
           : `Ready · ${disk.root}`,
     },
   ];
@@ -178,9 +182,9 @@ export async function GET() {
       "OPENROUTER_API_KEY missing or not on Production — add in Vercel → Env → Redeploy."
     );
   }
-  if (disk.ephemeral) {
+  if (disk.ephemeral && !crmStorage.configured) {
     tips.push(
-      "Storage is green when writable. On Vercel data still resets on cold starts (expected)."
+      crmStorage.warning || "Configure shared durable storage for Vercel."
     );
   }
   if (!firecrawl && !exa) {

@@ -17,7 +17,7 @@ import type {
   CrmUserTask,
   GraphNodeLayout,
 } from "@vexa/shared";
-import { dataPath } from "@/lib/data-root";
+import { dataPath, isServerlessRuntime } from "@/lib/data-root";
 
 const DATA_DIR = dataPath("durable");
 const CRM_PATH = dataPath("durable", "crm.json");
@@ -43,11 +43,61 @@ function empty(): CrmSnapshot {
 let cache: CrmSnapshot | null = null;
 let writeQueue: Promise<void> = Promise.resolve();
 
+const SHARED_STORE_URL =
+  process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || "";
+const SHARED_STORE_TOKEN =
+  process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || "";
+const SHARED_STORE_KEY = "vexa:crm:snapshot:v1";
+
+export function getCrmStorageStatus() {
+  const configured = Boolean(SHARED_STORE_URL && SHARED_STORE_TOKEN);
+  return {
+    configured,
+    durable: configured,
+    provider: configured ? "redis-rest" : "local-json",
+    warning:
+      !configured && isServerlessRuntime()
+        ? "Configure KV_REST_API_URL and KV_REST_API_TOKEN (or UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN) for durable Vercel storage."
+        : null,
+  };
+}
+
+async function sharedCommand(command: unknown[]) {
+  const status = getCrmStorageStatus();
+  if (!status.configured) return null;
+  const response = await fetch(SHARED_STORE_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${SHARED_STORE_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(command),
+    signal: AbortSignal.timeout(5000),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(`Shared CRM storage returned HTTP ${response.status}`);
+  }
+  const payload = (await response.json()) as { result?: unknown };
+  return payload.result;
+}
+
 async function ensureDir() {
   await fs.mkdir(DATA_DIR, { recursive: true });
 }
 
 export async function loadCrm(): Promise<CrmSnapshot> {
+  const storage = getCrmStorageStatus();
+  if (storage.configured) {
+    const raw = await sharedCommand(["GET", SHARED_STORE_KEY]);
+    cache = raw
+      ? ({ ...empty(), ...JSON.parse(String(raw)) } as CrmSnapshot)
+      : empty();
+    return cache;
+  }
+  if (isServerlessRuntime()) {
+    throw new Error(storage.warning || "Durable CRM storage is not configured");
+  }
   if (cache) return cache;
   await ensureDir();
   try {
@@ -62,7 +112,7 @@ export async function loadCrm(): Promise<CrmSnapshot> {
 export async function saveCrm(
   mutator: (db: CrmSnapshot) => void
 ): Promise<CrmSnapshot> {
-  writeQueue = writeQueue.then(async () => {
+  writeQueue = writeQueue.catch(() => undefined).then(async () => {
     const db = await loadCrm();
     mutator(db);
     db.updatedAt = new Date().toISOString();
@@ -72,6 +122,10 @@ export async function saveCrm(
     db.events = db.events.slice(0, 500);
     db.applications = db.applications.slice(0, 1000);
     cache = db;
+    if (getCrmStorageStatus().configured) {
+      await sharedCommand(["SET", SHARED_STORE_KEY, JSON.stringify(db)]);
+      return;
+    }
     // Soft-fail disk: keep memory cache even if FS is read-only
     try {
       await ensureDir();

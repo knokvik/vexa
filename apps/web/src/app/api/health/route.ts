@@ -8,6 +8,7 @@ import {
   probeDataWritable,
 } from "@/lib/data-root";
 import { getAppUrl } from "@/lib/oauth/config";
+import { getCrmStorageStatus } from "@/lib/crm/db";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ export async function GET() {
   const cfg = getOpenRouterConfig();
   const circuit = getLlmCircuitStatus();
   const disk = await probeDataWritable();
+  const crmStorage = getCrmStorageStatus();
 
   const strip = (v?: string | null) =>
     (v || "")
@@ -38,9 +40,9 @@ export async function GET() {
     tips.push(
       `Data directory not writable (${disk.root}): ${disk.error || "unknown"}. Tasks/CRM may only last for one instance.`
     );
-  } else if (disk.ephemeral) {
+  } else if (disk.ephemeral && !crmStorage.configured) {
     tips.push(
-      "Storage is ephemeral on Vercel (/tmp). Tasks & pipeline reset on cold starts — fine for demos; use a DB later for permanence."
+      crmStorage.warning || "Configure shared durable storage for Vercel before using tasks and CRM data."
     );
   }
   if (
@@ -59,6 +61,7 @@ export async function GET() {
 
   const ready =
     disk.ok &&
+    (!isServerlessRuntime() || crmStorage.configured) &&
     // openrouter optional for free boards
     true;
 
@@ -86,6 +89,8 @@ export async function GET() {
       ephemeral: isEphemeralStorage(),
       writable: disk.ok,
       error: disk.error || null,
+      durable: crmStorage.durable,
+      provider: crmStorage.provider,
     },
     store: {
       jobs: store.listJobs().length,
