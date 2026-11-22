@@ -2,21 +2,23 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { VexaLogo } from "@/components/VexaLogo";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const PIN = "2580";
 const STORAGE_KEY = "vexa_pin_ok_v1";
 
 /**
- * Host unlock — click pad or type 0–9 on the keyboard.
+ * Host unlock screen:
+ * - Animated Vexa logo
+ * - On-screen numpad removed
+ * - Auto-opens native numeric keypad on phone load/reload via autoFocused inputMode="numeric"
  */
 export function PinGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [digits, setDigits] = useState("");
   const [error, setError] = useState(false);
-  const digitsRef = useRef("");
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     try {
@@ -28,10 +30,6 @@ export function PinGate({ children }: { children: React.ReactNode }) {
     }
     setReady(true);
   }, []);
-
-  useEffect(() => {
-    digitsRef.current = digits;
-  }, [digits]);
 
   const unlock = useCallback(() => {
     try {
@@ -45,67 +43,48 @@ export function PinGate({ children }: { children: React.ReactNode }) {
   const tryPin = useCallback(
     (next: string) => {
       setError(false);
-      const pin = next.slice(0, 4);
-      setDigits(pin);
-      if (pin.length < 4) return;
-      if (pin === PIN) {
+      const clean = next.replace(/\D/g, "").slice(0, 4);
+      setDigits(clean);
+
+      if (clean.length < 4) return;
+
+      if (clean === PIN) {
         unlock();
       } else {
         setError(true);
         window.setTimeout(() => {
           setDigits("");
           setError(false);
-        }, 400);
+          inputRef.current?.focus();
+        }, 500);
       }
     },
     [unlock]
   );
 
-  const press = useCallback(
-    (d: string) => {
-      tryPin(digitsRef.current + d);
-    },
-    [tryPin]
-  );
-
-  const backspace = useCallback(() => {
-    setError(false);
-    setDigits((d) => d.slice(0, -1));
-  }, []);
-
-  // Laptop keyboard: type numbers / backspace / enter
+  // Auto-focus the numeric input on mount and on any reload so the phone keypad pops up immediately
   useEffect(() => {
-    if (unlocked || !ready) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const t = e.target as HTMLElement | null;
-      if (
-        t &&
-        (t.tagName === "INPUT" ||
-          t.tagName === "TEXTAREA" ||
-          t.isContentEditable)
-      ) {
-        return;
-      }
-      if (/^[0-9]$/.test(e.key)) {
-        e.preventDefault();
-        press(e.key);
-        return;
-      }
-      if (e.key === "Backspace" || e.key === "Delete") {
-        e.preventDefault();
-        backspace();
-        return;
-      }
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setDigits("");
-        setError(false);
-      }
+    if (!unlocked && ready) {
+      inputRef.current?.focus();
+      const raf = requestAnimationFrame(() => {
+        inputRef.current?.focus();
+      });
+      const t = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 150);
+      return () => {
+        cancelAnimationFrame(raf);
+        clearTimeout(t);
+      };
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [unlocked, ready, press, backspace]);
+  }, [unlocked, ready]);
+
+  // Keep focus on the hidden numeric input when clicking anywhere on screen
+  const handleContainerClick = () => {
+    if (!unlocked) {
+      inputRef.current?.focus();
+    }
+  };
 
   if (!ready) {
     return (
@@ -116,76 +95,78 @@ export function PinGate({ children }: { children: React.ReactNode }) {
   if (unlocked) return <>{children}</>;
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6">
-      <div className="mb-8 flex flex-col items-center gap-3">
-        <VexaLogo size="xl" animated={false} />
-        <h1 className="text-xl font-semibold tracking-tight">Unlock Vexa</h1>
-        <p className="text-center text-sm text-muted-foreground">
-          Type the PIN on your keyboard or tap the pad
+    <div
+      onClick={handleContainerClick}
+      className="relative flex min-h-screen flex-col items-center justify-center bg-background px-6 select-none cursor-pointer"
+    >
+      {/* Hidden high-priority numeric input to trigger mobile phone numeric keypad on load */}
+      <input
+        ref={inputRef}
+        type="tel"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        maxLength={4}
+        autoFocus
+        autoComplete="one-time-code"
+        value={digits}
+        onChange={(e) => tryPin(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            setDigits("");
+            setError(false);
+          }
+        }}
+        className="sr-only"
+        aria-label="Enter PIN"
+      />
+
+      {/* Brand & Animated Logo */}
+      <div className="mb-8 flex flex-col items-center gap-3.5 text-center">
+        <div className="relative flex items-center justify-center">
+          {/* Subtle glowing ring behind animated logo */}
+          <span className="pointer-events-none absolute size-16 rounded-full bg-primary/10 blur-xl animate-pulse" />
+          <VexaLogo size="xl" animated={true} />
+        </div>
+        <h1 className="text-2xl font-semibold tracking-tight">Unlock Vexa</h1>
+        <p className="text-sm text-muted-foreground">
+          Enter PIN to access your workspace
         </p>
       </div>
 
-      {/* Visible PIN field for laptop typing feedback */}
+      {/* 4-digit indicator dots */}
       <div
         className={cn(
-          "mb-6 flex h-12 w-full max-w-[260px] items-center justify-center gap-3 rounded-2xl border bg-card px-4 shadow-sm",
-          error && "border-destructive"
+          "mb-4 flex h-14 w-full max-w-[240px] items-center justify-center gap-4 rounded-2xl border bg-card/60 px-6 backdrop-blur-md shadow-xs transition-all duration-300",
+          error
+            ? "border-destructive animate-shake shadow-[0_0_15px_rgba(239,68,68,0.25)]"
+            : "border-border/80 hover:border-border"
         )}
-        aria-label="PIN entry"
       >
-        {[0, 1, 2, 3].map((i) => (
-          <div
-            key={i}
-            className={cn(
-              "flex h-3.5 w-3.5 items-center justify-center rounded-full border-2 transition-all duration-150",
-              digits.length > i
-                ? "scale-110 border-foreground bg-foreground"
-                : "border-muted-foreground/40",
-              error && "border-destructive bg-destructive/30"
-            )}
-          />
-        ))}
+        {[0, 1, 2, 3].map((i) => {
+          const filled = digits.length > i;
+          return (
+            <div
+              key={i}
+              className={cn(
+                "flex size-4 items-center justify-center rounded-full border-2 transition-all duration-200",
+                filled
+                  ? "scale-110 border-foreground bg-foreground shadow-xs"
+                  : "border-muted-foreground/30 bg-transparent",
+                error && "border-destructive bg-destructive/40"
+              )}
+            />
+          );
+        })}
       </div>
 
-      <p className="mb-4 font-mono text-xs text-muted-foreground">
-        {digits.length}/4
-        <span className="ml-2 hidden sm:inline">· keys 0–9 work</span>
+      <p className="font-mono text-xs text-muted-foreground">
+        {digits.length}/4 digits
       </p>
 
-      <div className="grid w-full max-w-[260px] grid-cols-3 gap-3">
-        {["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"].map(
-          (key, i) => {
-            if (key === "") return <div key={i} />;
-            if (key === "⌫") {
-              return (
-                <Button
-                  key={i}
-                  type="button"
-                  variant="ghost"
-                  className="h-14 rounded-2xl text-lg"
-                  onClick={backspace}
-                >
-                  ⌫
-                </Button>
-              );
-            }
-            return (
-              <Button
-                key={i}
-                type="button"
-                variant="secondary"
-                className="h-14 rounded-2xl text-xl font-medium active:scale-95"
-                onClick={() => press(key)}
-              >
-                {key}
-              </Button>
-            );
-          }
-        )}
-      </div>
-
       {error && (
-        <p className="mt-4 text-sm text-destructive">Incorrect PIN — try again</p>
+        <p className="mt-3 text-xs font-medium text-destructive animate-fade-in">
+          Incorrect PIN — please try again
+        </p>
       )}
     </div>
   );
