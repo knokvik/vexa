@@ -879,23 +879,8 @@ function defaultSeedTasks(): CrmUserTask[] {
 
 export async function listUserTasks(includeDone = false) {
   const db = await loadCrm();
-  const seed = defaultSeedTasks();
-
-  if (!db.userTasks || db.userTasks.length === 0) {
-    db.userTasks = seed;
-  } else {
-    // Merge any missing seed tasks (e.g. newly deployed hackathons & personal tasks)
-    const existingTitles = new Set(
-      db.userTasks.map((t) => t.title.toLowerCase().trim())
-    );
-    const missingSeedTasks = seed.filter(
-      (s) => !existingTitles.has(s.title.toLowerCase().trim())
-    );
-    if (missingSeedTasks.length > 0) {
-      db.userTasks = [...missingSeedTasks, ...db.userTasks];
-    }
-  }
-
+  // Do not regenerate or merge demo/seed tasks here. Reads must be side-effect
+  // free so completed and deleted rows stay gone after a reload.
   const tasks = db.userTasks || [];
   return includeDone ? tasks : tasks.filter((t) => !t.done);
 }

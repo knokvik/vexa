@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Loader2, Plus, Table2 } from "lucide-react";
+import { PIPELINE_STAGES } from "@vexa/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +31,19 @@ type JobRow = {
 };
 
 type SideItem = { id: string; title: string; due?: string; done?: boolean };
+
+const STAGE_LABELS: Record<string, string> = {
+  wishlist: "Wishlist",
+  applied: "Applied",
+  screen: "Screen",
+  technical: "Technical",
+  onsite: "Onsite",
+  offer: "Offer",
+  accepted: "Accepted",
+  ghosted: "Ghosted",
+  rejected: "Rejected",
+  withdrawn: "Withdrawn",
+};
 
 function formatRelative(iso?: string) {
   if (!iso) return "—";
@@ -256,7 +270,7 @@ export default function WorkspacePage() {
                         variant="outline"
                         className="font-mono text-[10px] uppercase"
                       >
-                        {a.stage}
+                        {STAGE_LABELS[a.stage] || a.stage}
                       </Badge>
                     </td>
                     <td className="px-3 py-2.5 text-xs text-muted-foreground">
@@ -273,18 +287,9 @@ export default function WorkspacePage() {
                           void moveStage(a.id, e.target.value)
                         }
                       >
-                        {[
-                          "wishlist",
-                          "applied",
-                          "screen",
-                          "technical",
-                          "onsite",
-                          "offer",
-                          "rejected",
-                          "ghosted",
-                        ].map((s) => (
+                        {PIPELINE_STAGES.map((s) => (
                           <option key={s} value={s}>
-                            {s}
+                            {STAGE_LABELS[s] || s}
                           </option>
                         ))}
                       </select>
