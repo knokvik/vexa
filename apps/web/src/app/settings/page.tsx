@@ -9,7 +9,6 @@ import {
   PLATFORM_SYNC_MAX_AGE_HOURS,
   type Profile,
 } from "@vexa/shared";
-import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -95,11 +94,6 @@ export default function SettingsPage() {
 
   return (
     <div className="w-full space-y-6">
-      <PageHeader
-        eyebrow="You"
-        title="Settings"
-        description="Profile + preferences side by side on desktop. Switch tabs on small screens."
-      />
 
       {/* Mobile / always-visible switch */}
       <div className="lg:hidden">{switcher}</div>

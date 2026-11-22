@@ -11,7 +11,6 @@ import {
   Users,
   FolderGit2,
 } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useSearchDialog } from "@/components/SearchProvider";
@@ -119,22 +118,17 @@ export default function JobsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        eyebrow="Jobs"
-        title="Board & research"
-        description="Pick a role → research people & projects in the side panel. You apply."
-        actions={
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={running}
-            onClick={() => void discoverOnly()}
-          >
-            {running && <Loader2 className="size-3.5 animate-spin" />}
-            Find more
-          </Button>
-        }
-      />
+      <div className="flex items-center justify-end">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={running}
+          onClick={() => void discoverOnly()}
+        >
+          {running && <Loader2 className="size-3.5 animate-spin" />}
+          Find more
+        </Button>
+      </div>
 
       <div className="rounded-xl border bg-card p-3 shadow-sm">
         <KeywordSearchInput

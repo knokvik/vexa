@@ -7,7 +7,6 @@ import {
   Search,
   UserPlus,
 } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -109,11 +108,6 @@ export default function NetworkPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="Graph"
-        title="Network"
-        description="Contacts are nodes. Who do you know at a company? Warm paths beat cold apply volume."
-      />
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Card>

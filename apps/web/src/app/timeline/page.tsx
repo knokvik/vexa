@@ -9,12 +9,9 @@ import {
   Briefcase,
   ListTodo,
   CheckCircle2,
-  AlertTriangle,
-  Target,
   Plus,
   Circle,
 } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -114,22 +111,6 @@ export default function TimelinePage() {
     [tasks]
   );
 
-  const dueSoon = useMemo(() => {
-    return openTasks
-      .map((t) => ({ t, d: daysUntil(t.dueAt) }))
-      .filter((x) => x.d != null && x.d <= 7)
-      .sort((a, b) => (a.d ?? 99) - (b.d ?? 99));
-  }, [openTasks]);
-
-  const overdue = useMemo(
-    () =>
-      openTasks.filter((t) => {
-        const d = daysUntil(t.dueAt);
-        return d != null && d < 0;
-      }),
-    [openTasks]
-  );
-
   async function addTask() {
     if (!newTitle.trim()) return;
     setBusy(true);
@@ -208,71 +189,7 @@ export default function TimelinePage() {
   }, [items, logFilter]);
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        eyebrow="Ops"
-        title="Timeline"
-        description="Current tasks · deadlines · daily complete · activity log hooks."
-      />
-
-      {/* Focus strip */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border bg-card p-3 shadow-sm">
-          <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground">
-            <Target className="size-3.5" /> Today
-          </p>
-          <p className="mt-1 text-sm font-medium leading-snug">
-            {briefing?.summary || "No briefing yet"}
-          </p>
-          <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-            {openTasks.length} open tasks · {overdue.length} overdue
-          </p>
-        </div>
-        <div className="rounded-xl border bg-card p-3 shadow-sm">
-          <p className="text-[11px] font-semibold uppercase text-muted-foreground">
-            Conversion
-          </p>
-          <p className="mt-2 font-mono text-2xl font-semibold">
-            {briefing?.conversion?.appliedToScreen ?? 0}
-            <span className="text-sm font-normal text-muted-foreground">
-              % →screen
-            </span>
-          </p>
-          <p className="font-mono text-sm text-muted-foreground">
-            {briefing?.conversion?.screenToOffer ?? 0}% →offer
-          </p>
-        </div>
-        <div className="rounded-xl border bg-card p-3 shadow-sm">
-          <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground">
-            <AlertTriangle className="size-3.5 text-amber-500" /> Deadlines
-          </p>
-          <ul className="mt-1.5 max-h-20 space-y-1 overflow-y-auto">
-            {dueSoon.slice(0, 4).map(({ t, d }) => (
-              <li key={t.id} className="truncate text-xs">
-                <span
-                  className={cn(
-                    "font-mono",
-                    (d ?? 0) < 0 ? "text-destructive" : "text-muted-foreground"
-                  )}
-                >
-                  {d != null && d < 0
-                    ? `${Math.abs(d)}d late`
-                    : d === 0
-                      ? "today"
-                      : `${d}d`}
-                </span>{" "}
-                {t.title}
-              </li>
-            ))}
-            {!dueSoon.length && (
-              <li className="text-xs text-muted-foreground">
-                No deadlines in 7 days
-              </li>
-            )}
-          </ul>
-        </div>
-      </div>
-
+    <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
         {/* Current tasks table */}
         <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
@@ -284,8 +201,9 @@ export default function TimelinePage() {
               {openTasks.length} open
             </span>
           </div>
+          <div className="max-h-[555px] overflow-y-auto">
           <table className="w-full text-left">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-card">
               <tr className="border-b text-[10px] font-medium text-muted-foreground">
                 <th className="w-8 px-3 py-2" />
                 <th className="px-3 py-2">Task</th>
@@ -344,6 +262,7 @@ export default function TimelinePage() {
               })}
             </tbody>
           </table>
+          </div>
 
           {/* Add task */}
           <div className="space-y-2 border-t p-3">

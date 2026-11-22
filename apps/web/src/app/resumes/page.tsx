@@ -11,7 +11,6 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -231,11 +230,6 @@ export default function ProfileResumePage() {
 
   return (
     <div className="w-full space-y-8">
-      <PageHeader
-        eyebrow="Profile & resume"
-        title="You"
-        description="Edit profile for applications, upload your resume as-is, and grab official Ivy templates."
-      />
 
       {message && (
         <Alert variant="success">

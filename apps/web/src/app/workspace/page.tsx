@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Loader2, Plus, Table2 } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -143,18 +142,7 @@ export default function WorkspacePage() {
   }
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        eyebrow="Workspace"
-        title="Tables"
-        description="Notion-style boards for jobs and life tracking. Dashboard stays clean — this is the data home."
-        actions={
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/">Command home</Link>
-          </Button>
-        }
-      />
-
+    <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
         {/* Left — detailed job tables */}
         <div className="min-w-0 space-y-3">

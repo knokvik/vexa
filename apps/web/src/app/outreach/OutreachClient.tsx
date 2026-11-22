@@ -11,7 +11,6 @@ import {
   Check,
   UserSearch,
 } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -245,11 +244,6 @@ export default function OutreachPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        eyebrow="Cold outreach"
-        title="Personalized emails"
-        description="Highest leverage vs blasting Easy Apply. Draft from your profile + a real hook, review, then copy or send. Never bulk-spam."
-      />
 
       <Alert>
         <Mail className="size-4" />

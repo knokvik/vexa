@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ApplicationDraft, JobListing } from "@vexa/shared";
 import { classifyApplySurface } from "@vexa/shared";
-import { PageHeader } from "@/components/page-header";
 import { ScoreBar } from "@/components/score-bar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -321,28 +320,21 @@ export default function InboxPage() {
 
   return (
     <div className="w-full space-y-5">
-      <PageHeader
-        eyebrow="Legacy packages"
-        title="Old draft packages"
-        description="Auto-apply and resume tailor are removed. Use Pipeline (email CRM) for real tracking. This list is legacy prefill packages only."
-        actions={
-          <>
-            <Button size="sm" asChild>
-              <Link href="/pipeline">Open Pipeline CRM</Link>
-            </Button>
-            <Button variant="outline" size="sm" asChild>
-              <a href="/api/export/applications" download>
-                Export CSV
-              </a>
-            </Button>
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/insights">
-                <BarChart3 className="size-3.5" /> Insights
-              </Link>
-            </Button>
-          </>
-        }
-      />
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Button size="sm" asChild>
+          <Link href="/pipeline">Open Pipeline CRM</Link>
+        </Button>
+        <Button variant="outline" size="sm" asChild>
+          <a href="/api/export/applications" download>
+            Export CSV
+          </a>
+        </Button>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/insights">
+            <BarChart3 className="size-3.5" /> Insights
+          </Link>
+        </Button>
+      </div>
 
       {message && (
         <Alert variant="success">

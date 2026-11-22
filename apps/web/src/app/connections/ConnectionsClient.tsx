@@ -19,7 +19,6 @@ import {
   ChevronUp,
   AlertTriangle,
 } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -356,21 +355,16 @@ export default function ConnectionsClient() {
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        eyebrow="Connections"
-        title="Connect platforms"
-        description={`OAuth for GitHub, Google, LinkedIn, X. Tokens stay server-side. Daily sync every ${data.maxAgeHours}h + before drafts when enabled.`}
-        actions={
-          <Button disabled={busy === "sync"} onClick={() => void runSyncNow()}>
-            {busy === "sync" ? (
-              <Loader2 className="animate-spin" />
-            ) : (
-              <RefreshCw />
-            )}
-            Sync now
-          </Button>
-        }
-      />
+      <div className="flex items-center justify-end">
+        <Button disabled={busy === "sync"} onClick={() => void runSyncNow()}>
+          {busy === "sync" ? (
+            <Loader2 className="animate-spin" />
+          ) : (
+            <RefreshCw />
+          )}
+          Sync now
+        </Button>
+      </div>
 
       {note && (
         <Alert>

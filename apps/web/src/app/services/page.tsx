@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, Wifi, WifiOff, AlertTriangle, CircleDashed } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -63,11 +62,6 @@ export default function ServicesPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        eyebrow="Live stack"
-        title="Services"
-        description="Crawlers, free boards, and LLM status — green = ready to use."
-      />
 
       {/* Key chips — quick confirmation env is live */}
       <div className="flex flex-wrap gap-1.5">
