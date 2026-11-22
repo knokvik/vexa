@@ -10,6 +10,7 @@ import { ModeToggle } from "@/components/mode-toggle";
 import { AiActivityIndicator } from "@/components/AiActivityIndicator";
 import { VexaLogo } from "@/components/VexaLogo";
 import { HeaderActivityTicker } from "@/components/HeaderActivityTicker";
+import { HeaderTaskMarquee } from "@/components/HeaderTaskMarquee";
 import { FloatingNav } from "@/components/FloatingNav";
 import { PinGate } from "@/components/PinGate";
 import { PageTransition } from "@/components/PageTransition";
@@ -69,7 +70,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               : "vexa-shell"
           )}
         >
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <Link
               href="/"
               className="vexa-brand flex min-w-0 items-center gap-1 text-[18px] leading-none sm:text-[20px]"
@@ -79,6 +80,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                 {APP_NAME}
               </span>
             </Link>
+          </div>
+
+          {/* Middle Task Marquee Ticker */}
+          <div className="hidden md:flex flex-1 min-w-0 mx-2 lg:mx-4 justify-center">
+            <HeaderTaskMarquee />
           </div>
 
           <div className="relative z-10 flex shrink-0 items-center justify-end gap-1.5">
