@@ -208,7 +208,7 @@ export default function TimelinePage() {
   }, [items, logFilter]);
 
   return (
-    <div className="space-y-6 pt-3 sm:pt-5">
+    <div className="space-y-4 pt-1 sm:pt-2">
       <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
         {/* Current tasks table */}
         <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
