@@ -60,7 +60,14 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen overflow-x-hidden bg-background">
       {/* Fixed top bar — does not scroll away */}
       <header className="fixed inset-x-0 top-0 z-50 border-b border-border/40 bg-background/95 pt-2 backdrop-blur-xl supports-[backdrop-filter]:bg-background/85 sm:pt-3">
-        <div className="vexa-shell relative flex h-12 items-center justify-between gap-2 pb-2 sm:h-14 sm:gap-3">
+        <div
+          className={cn(
+            "relative flex h-12 items-center justify-between gap-2 pb-2 sm:h-14 sm:gap-3",
+            pathname === "/"
+              ? "w-full max-w-[1720px] mx-auto px-2 sm:px-4 lg:px-6"
+              : "vexa-shell"
+          )}
+        >
           <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
             <Link
               href="/"

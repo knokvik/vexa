@@ -455,93 +455,89 @@ export default function TimelinePage() {
             </ul>
           </div>
 
-          <Button variant="outline" size="sm" className="w-full" asChild>
-            <Link href="/workspace">Open full tables →</Link>
-          </Button>
-        </div>
-      </div>
-
-      {/* Activity log (hooks) */}
-      <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/40 px-3 py-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Activity log
-          </span>
-          <div className="flex gap-1">
-            {(["all", "today", "week"] as const).map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setLogFilter(f)}
-                className={cn(
-                  "rounded-md px-2 py-0.5 text-[10px] capitalize",
-                  logFilter === f
-                    ? "bg-foreground text-background"
-                    : "text-muted-foreground hover:bg-muted"
-                )}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="border-b px-3 py-2">
-          <Input
-            placeholder="Filter log by company…"
-            value={company}
-            onChange={(e) => setCompany(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void load(company.trim() || undefined);
-            }}
-            className="h-8 max-w-xs text-xs"
-          />
-        </div>
-
-        {loading ? (
-          <div className="flex items-center gap-2 px-3 py-8 text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> Loading…
-          </div>
-        ) : (
-          <ol className="max-h-80 space-y-0 overflow-y-auto border-l-0 p-3">
-            {filteredLog.map((item) => {
-              const Icon = KIND_ICON[item.kind] || Mail;
-              return (
-                <li
-                  key={`${item.kind}-${item.id}`}
-                  className="flex gap-2 border-b border-border/40 py-2 last:border-0"
-                >
-                  <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Badge variant="outline" className="text-[9px]">
-                        {item.kind}
-                      </Badge>
-                      <time className="font-mono text-[10px] text-muted-foreground">
-                        {item.at?.slice(0, 16).replace("T", " ")}
-                      </time>
-                      {item.companyName && (
-                        <span className="text-[11px] text-muted-foreground">
-                          {item.companyName}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm font-medium">{item.title}</p>
-                    {item.detail && (
-                      <p className="text-xs text-muted-foreground">
-                        {item.detail}
-                      </p>
+          {/* Activity log (shifted to right side below Upcoming Interviews) */}
+          <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/40 px-3 py-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Activity log
+              </span>
+              <div className="flex gap-1">
+                {(["all", "today", "week"] as const).map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setLogFilter(f)}
+                    className={cn(
+                      "rounded-md px-2 py-0.5 text-[10px] capitalize",
+                      logFilter === f
+                        ? "bg-foreground text-background"
+                        : "text-muted-foreground hover:bg-muted"
                     )}
-                  </div>
-                </li>
-              );
-            })}
-            {filteredLog.length === 0 && (
-              <li className="py-6 text-center text-sm text-muted-foreground">
-                No log entries. Commands on Home append here as hooks.
-              </li>
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="border-b px-3 py-2">
+              <Input
+                placeholder="Filter log by company…"
+                value={company}
+                onChange={(e) => setCompany(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void load(company.trim() || undefined);
+                }}
+                className="h-8 w-full text-xs"
+              />
+            </div>
+
+            {loading ? (
+              <div className="flex items-center gap-2 px-3 py-8 text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" /> Loading…
+              </div>
+            ) : (
+              <ol className="max-h-72 space-y-0 overflow-y-auto border-l-0 p-3">
+                {filteredLog.map((item) => {
+                  const Icon = KIND_ICON[item.kind] || Mail;
+                  return (
+                    <li
+                      key={`${item.kind}-${item.id}`}
+                      className="flex gap-2 border-b border-border/40 py-2 last:border-0"
+                    >
+                      <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge variant="outline" className="text-[9px]">
+                            {item.kind}
+                          </Badge>
+                          <time className="font-mono text-[10px] text-muted-foreground">
+                            {item.at?.slice(0, 16).replace("T", " ")}
+                          </time>
+                          {item.companyName && (
+                            <span className="text-[11px] text-muted-foreground">
+                              {item.companyName}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm font-medium">{item.title}</p>
+                        {item.detail && (
+                          <p className="text-xs text-muted-foreground">
+                            {item.detail}
+                          </p>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+                {filteredLog.length === 0 && (
+                  <li className="py-6 text-center text-sm text-muted-foreground">
+                    No log entries. Commands on Home append here as hooks.
+                  </li>
+                )}
+              </ol>
             )}
-          </ol>
-        )}
+          </div>
+        </div>
       </div>
     </div>
   );
