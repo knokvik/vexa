@@ -1,14 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Loader2, Plus, Table2 } from "lucide-react";
+import { Check, ExternalLink, Loader2, Plus, Sparkles, Table2, TrendingUp } from "lucide-react";
 import { PIPELINE_STAGES } from "@vexa/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { appendLog } from "@/lib/activity-bus";
+import { QUANT_FIRMS, QUANT_GROUPS, type QuantFirm } from "@/lib/quant-firms";
 
 type AppRow = {
   id: string;
@@ -70,9 +71,11 @@ export default function WorkspacePage() {
   const [hackathons, setHackathons] = useState<SideItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
-  const [tab, setTab] = useState<"applications" | "jobs" | "companies">(
+  const [tab, setTab] = useState<"applications" | "jobs" | "companies" | "quant">(
     "applications"
   );
+  const [quantGroup, setQuantGroup] = useState<string>("all");
+  const [trackingFirmId, setTrackingFirmId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [bucket, setBucket] = useState<
     "conference" | "scholarship" | "hackathon"
@@ -158,6 +161,100 @@ export default function WorkspacePage() {
     [jobs, q]
   );
 
+  const filteredQuantFirms = useMemo(() => {
+    let list = QUANT_FIRMS;
+    if (quantGroup !== "all") {
+      list = list.filter((f) => f.group === quantGroup);
+    }
+    if (!q) return list;
+    return list.filter(
+      (f) =>
+        f.name.toLowerCase().includes(q) ||
+        f.strategies.toLowerCase().includes(q) ||
+        f.techSkills.toLowerCase().includes(q) ||
+        f.location.toLowerCase().includes(q) ||
+        f.domain.toLowerCase().includes(q) ||
+        f.groupTitle.toLowerCase().includes(q)
+    );
+  }, [quantGroup, q]);
+
+  const trackedWishlistNames = useMemo(() => {
+    const s = new Set<string>();
+    for (const a of apps) {
+      s.add(a.company.toLowerCase().trim());
+    }
+    return s;
+  }, [apps]);
+
+  const trackedCompanyNames = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of companies) {
+      s.add(c.name.toLowerCase().trim());
+      if (c.domain) s.add(c.domain.toLowerCase().trim());
+    }
+    return s;
+  }, [companies]);
+
+  async function addQuantToWishlist(firm: QuantFirm) {
+    setTrackingFirmId(`${firm.id}-wish`);
+    try {
+      const res = await fetch("/api/crm/tables", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          table: "applications",
+          data: {
+            company: firm.name,
+            role: "Quant Researcher / Software Engineer",
+            stage: "wishlist",
+            source: "100 Quant Directory 2026",
+            notes: `${firm.groupTitle} | Strategies: ${firm.strategies} | Skills: ${firm.techSkills} | HQ: ${firm.location}`,
+          },
+        }),
+      });
+      if (res.ok) {
+        appendLog({
+          kind: "workspace",
+          message: `Added ${firm.name} to Wishlist`,
+          status: "done",
+        });
+        await load(true);
+      }
+    } finally {
+      setTrackingFirmId(null);
+    }
+  }
+
+  async function addQuantToCompanies(firm: QuantFirm) {
+    setTrackingFirmId(`${firm.id}-co`);
+    try {
+      const res = await fetch("/api/crm/tables", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          table: "companies",
+          data: {
+            name: firm.name,
+            domain: firm.domain,
+            industry: `Quant Finance (${firm.groupTitle})`,
+            careerPageUrl: `https://${firm.domain}`,
+            notes: `Strategies: ${firm.strategies} | Skills: ${firm.techSkills} | Location: ${firm.location}`,
+          },
+        }),
+      });
+      if (res.ok) {
+        appendLog({
+          kind: "workspace",
+          message: `Added ${firm.name} to Companies`,
+          status: "done",
+        });
+        await load(true);
+      }
+    } finally {
+      setTrackingFirmId(null);
+    }
+  }
+
   async function addSide() {
     if (!draft.trim()) return;
     setBusy(true);
@@ -223,6 +320,7 @@ export default function WorkspacePage() {
                 ["applications", "Applications"],
                 ["jobs", "Job posts"],
                 ["companies", "Companies"],
+                ["quant", "100 Quant Firms 2026"],
               ] as const
             ).map(([id, label]) => (
               <button
@@ -236,17 +334,75 @@ export default function WorkspacePage() {
                     : "bg-muted text-muted-foreground hover:text-foreground"
                 )}
               >
-                <Table2 className="size-3.5" />
+                {id === "quant" ? <TrendingUp className="size-3.5 text-amber-400" /> : <Table2 className="size-3.5" />}
                 {label}
+                {id === "quant" && (
+                  <span className="ml-0.5 rounded bg-amber-500/20 px-1.5 py-0.2 font-mono text-[10px] text-amber-500 font-semibold">
+                    100
+                  </span>
+                )}
               </button>
             ))}
             <Input
-              placeholder="Filter…"
+              placeholder={tab === "quant" ? "Filter quants, C++, Python, HFT, NYC…" : "Filter…"}
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              className="ml-auto h-8 max-w-[200px] text-xs"
+              className="ml-auto h-8 max-w-[240px] text-xs"
             />
           </div>
+
+          {tab === "quant" && (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-muted/20 p-1.5">
+                {Object.entries(QUANT_GROUPS).map(([k, group]) => {
+                  const count =
+                    k === "all"
+                      ? QUANT_FIRMS.length
+                      : QUANT_FIRMS.filter((f) => f.group === k).length;
+                  const isActive = quantGroup === k;
+                  return (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setQuantGroup(k)}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition",
+                        isActive
+                          ? "bg-foreground text-background shadow-sm"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      )}
+                    >
+                      <span>{group.label}</span>
+                      <span
+                        className={cn(
+                          "rounded-full px-1.5 py-0.2 text-[10px] font-mono",
+                          isActive
+                            ? "bg-background/20 text-background"
+                            : "bg-muted text-muted-foreground"
+                        )}
+                      >
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="size-3.5 text-amber-400 shrink-0" />
+                  <span>
+                    <strong className="text-foreground">
+                      {QUANT_GROUPS[quantGroup]?.label || "Quant"}:
+                    </strong>{" "}
+                    {QUANT_GROUPS[quantGroup]?.desc || "Quantitative finance firms directory"}
+                  </span>
+                </div>
+                <span className="font-mono text-[11px] shrink-0 text-muted-foreground">
+                  Showing {filteredQuantFirms.length} of {QUANT_FIRMS.length}
+                </span>
+              </div>
+            </div>
+          )}
 
           <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
             {loading ? (
@@ -344,7 +500,7 @@ export default function WorkspacePage() {
                   </tr>
                 ))}
               </NotionTable>
-            ) : (
+            ) : tab === "companies" ? (
               <NotionTable
                 columns={["Company", "Domain", "Applied", "Apps"]}
                 empty="No companies tracked yet"
@@ -386,6 +542,155 @@ export default function WorkspacePage() {
                       </td>
                     </tr>
                   ))}
+              </NotionTable>
+            ) : (
+              <NotionTable
+                columns={[
+                  "#",
+                  "Firm",
+                  "Group",
+                  "Core Strategies & Edge",
+                  "Key Skills & Tech",
+                  "HQ / Location",
+                  "Actions",
+                ]}
+                empty="No quantitative trading firms match your search"
+              >
+                {filteredQuantFirms.map((firm, idx) => {
+                  const prevFirm = idx > 0 ? filteredQuantFirms[idx - 1] : null;
+                  const isNewGroup = !prevFirm || prevFirm.group !== firm.group;
+                  const isWishlisted = trackedWishlistNames.has(firm.name.toLowerCase().trim());
+                  const isCompanyTracked =
+                    trackedCompanyNames.has(firm.name.toLowerCase().trim()) ||
+                    Boolean(firm.domain && trackedCompanyNames.has(firm.domain.toLowerCase().trim()));
+                  const isAddingThis = trackingFirmId?.startsWith(firm.id);
+
+                  return (
+                    <Fragment key={firm.id}>
+                      {quantGroup === "all" && isNewGroup && (
+                        <tr className="bg-muted/70 border-t border-b border-border/80">
+                          <td colSpan={7} className="px-3 py-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={cn(
+                                    "rounded border px-2 py-0.5 text-xs font-semibold",
+                                    QUANT_GROUPS[firm.group]?.badgeClass
+                                  )}
+                                >
+                                  {firm.groupTitle}
+                                </span>
+                                <span className="text-[11px] text-muted-foreground">
+                                  {QUANT_GROUPS[firm.group]?.desc}
+                                </span>
+                              </div>
+                              <span className="font-mono text-[10px] text-muted-foreground">
+                                {QUANT_FIRMS.filter((f) => f.group === firm.group).length} firms
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      <tr className="border-t border-border/50 hover:bg-muted/40 transition">
+                        <td className="px-3 py-2.5 font-mono text-xs text-muted-foreground">
+                          #{firm.rank}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-1.5 font-medium text-sm">
+                            <span>{firm.name}</span>
+                            {firm.domain && (
+                              <a
+                                href={`https://${firm.domain}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={`Visit ${firm.domain}`}
+                                className="text-muted-foreground hover:text-foreground inline-flex items-center transition"
+                              >
+                                <ExternalLink className="size-3" />
+                              </a>
+                            )}
+                          </div>
+                          <span className="font-mono text-[11px] text-muted-foreground">
+                            {firm.domain}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span
+                            className={cn(
+                              "inline-block rounded border px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap",
+                              QUANT_GROUPS[firm.group]?.badgeClass || "border-border text-foreground"
+                            )}
+                          >
+                            {QUANT_GROUPS[firm.group]?.label || firm.groupTitle}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-foreground/90 min-w-[200px] max-w-[280px]">
+                          {firm.strategies}
+                        </td>
+                        <td className="px-3 py-2.5 min-w-[180px]">
+                          <div className="flex flex-wrap gap-1 max-w-[240px]">
+                            {firm.techSkills.split(",").map((skill, sIdx) => (
+                              <span
+                                key={sIdx}
+                                className="rounded bg-muted/60 border border-border/50 px-1.5 py-0.5 font-mono text-[10px] text-foreground/80"
+                              >
+                                {skill.trim()}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                          {firm.location}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            {isWishlisted ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-medium px-1.5 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10">
+                                <Check className="size-3" /> Wishlist
+                              </span>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={Boolean(isAddingThis)}
+                                onClick={() => void addQuantToWishlist(firm)}
+                                className="h-6 px-2 text-[10px] gap-1 hover:border-emerald-500/50 hover:bg-emerald-500/10 hover:text-emerald-400"
+                              >
+                                {isAddingThis && trackingFirmId === `${firm.id}-wish` ? (
+                                  <Loader2 className="size-3 animate-spin" />
+                                ) : (
+                                  <Plus className="size-3" />
+                                )}
+                                Wishlist
+                              </Button>
+                            )}
+
+                            {isCompanyTracked ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] text-blue-400 font-medium px-1.5 py-0.5 rounded border border-blue-500/30 bg-blue-500/10">
+                                <Check className="size-3" /> Tracked
+                              </span>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={Boolean(isAddingThis)}
+                                onClick={() => void addQuantToCompanies(firm)}
+                                className="h-6 px-2 text-[10px] gap-1 text-muted-foreground hover:text-foreground"
+                              >
+                                {isAddingThis && trackingFirmId === `${firm.id}-co` ? (
+                                  <Loader2 className="size-3 animate-spin" />
+                                ) : (
+                                  <Plus className="size-3" />
+                                )}
+                                Co
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    </Fragment>
+                  );
+                })}
               </NotionTable>
             )}
           </div>
